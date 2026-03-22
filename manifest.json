@@ -1,14 +1,24 @@
 {
-  "name": "Hello Extensions",
-  "description": "Base Level Extension",
+  "name": "SSL Country of Origin Finder",
+  "description": "tbd",
   "version": "1.0",
   "manifest_version": 3,
   "action": {
-    "default_popup": "popup/popup.html",
-    "default_icon": "images/example_icon.png"
+    "default_popup": "/popup.html",
+    "default_icon": "images/example_icon.png",
+    "default_title": "Run"
   },
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["activeTab", "scripting"]
+  "permissions": ["activeTab", "scripting"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "content.js",
+        "modules/highlightRange.js"
+      ]
+    }
+  ]
 }
