@@ -7,7 +7,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             (response) => {
                 sendResponse({ status: "ok", bgResponse: response })
         });
-        highlightPhrase("Netherlands Organization");
+        // highlightPhrase("Netherlands Organization");
         return true;
     }
 });
