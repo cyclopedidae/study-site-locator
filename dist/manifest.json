@@ -4,22 +4,22 @@
   "version": "1.0",
   "manifest_version": 3,
   "action": {
-    "default_popup": "/popup.html",
-    "default_icon": "images/example_icon.png",
+    "default_popup": "popup.html",
+    "default_icon": "icons/example_icon.png",
     "default_title": "Run"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "permissions": ["activeTab", "scripting"],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": [
-        "content.js",
-        "modules/highlightRange.js",
-        "mudles/nlp.js"
-      ]
+      "js": ["content.js"]
     }
-  ]
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  }
 }
