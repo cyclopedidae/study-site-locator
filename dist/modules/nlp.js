@@ -1,20 +1,15 @@
 import { pipeline, env } from '@xenova/transformers';
 
-let nerReady = null;
+let nerPipeline = null;
 
-env.backends.onnx.wasm.numThreads = 1;
+// env.backends.onnx.wasm.numThreads = 1;
+env.allowLocalModels = true;
+env.allowRemoteModels = false;
+env.localModelPath = chrome.runtime.getURL('models/');
 
-export async function findEntities(chunks) {
-  if (!nerReady) {
-    nerReady = pipeline('token-classification', 'Xenova/bert-base-NER');
+export async function getNER() {
+  if (!nerPipeline) {
+    nerPipeline = pipeline('token-classification', 'Xenova/bert-base-NER');
   }
-
-  for (let chunk of chunks) {
-    console.log(chunk);
-    const ner = await nerReady;
-    const result = await ner(chunk);
-    console.log(result);  
-  }
-
-  return result;
+  return nerPipeline
 }

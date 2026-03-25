@@ -1,1 +1,7 @@
-node_modules
+# Dependencies
+node_modules/
+
+# Build
+dist/
+.DS_Store
+dist.*
