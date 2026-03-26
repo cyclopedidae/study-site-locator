@@ -8,6 +8,7 @@ module.exports = {
         background: './src/background.js',
         content: './src/content.js',
         popup: './src/popup.js',
+        offscreen: './src/offscreen.js'
     },
 
     output: {

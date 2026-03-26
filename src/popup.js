@@ -2,7 +2,7 @@ document.getElementById("run").addEventListener("click", () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             chrome.tabs.sendMessage(
                 tabs[0].id, 
-                { action: "read_body" },
+                { action: "extract_text" },
                 (response) => {
                     if (chrome.runtime.lastError) {
                     console.error("Popup sendMessage error:", chrome.runtime.lastError.message);

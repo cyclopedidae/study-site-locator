@@ -8,13 +8,21 @@ env.allowRemoteModels = false;
 env.localModelPath = chrome.runtime.getURL('models/');
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) =>  {
-    if (request.action === "run_ner_offscreen") {
-        runNER(request.chunk)
-            .then((result) => sendResponse({ status: 'ok', entities: result }))
-            .catch((error) => sendResponse({ status: 'error', message: error.message }));
+    if (request.action === "run_ner") {
+        (async() => {
+            try {
+                const result = await runNER("This is a test. We are in Hamilton, Ontario.");
+                console.log(result);
+                sendResponse({ status: 'ok', entities: result });
+            } catch (error) {
+                sendResponse({ status: 'offscreen ner error', message: error.message });
+            }
+        });
+            // .then((result) => sendResponse({ status: 'ok', entities: result }))
+            // .catch((error) => sendResponse({ status: 'offscreen ner error', message: error.message }));
+        
+        return true;
     }
-
-    return true;
 });
 
 async function runNER(chunk) {
