@@ -2,7 +2,6 @@ export function getPortionedChunks(body) {
     const chunks = chunkify(body);
     const portions = [];
 
-    // Q TO ASK ANDY: should I keep this? or hardcode in is* funcs?
     const upperBound = 1200;
     const lowerBound = 900;
 
@@ -170,4 +169,132 @@ function countCharacter(str, char) {
     const regex = new RegExp(char, 'g');
     const matches = str.match(regex);
     return matches ? matches.length : 0;
+}
+
+function scoreNode(node) {
+  const text = node.innerText || '';
+  const pCount = node.querySelectorAll('p').length;
+  const linkCount = node.querySelectorAll('a').length;
+  const buttonCount = node.querySelectorAll('button').length;
+  const liCount = node.querySelectorAll('li').length;
+
+  const textLen = text.length;
+  const penalty = linkCount * 20 + buttonCount * 30 + liCount * 8;
+
+  return textLen + pCount * 200 - penalty;
+}
+
+function removeNoise(root) {
+  const badSelectors = [
+    'nav', 'header', 'footer', 'aside', 'form', 'button',
+    '.references', '.reference', '.citations', '.citation',
+    '.related-articles', '.related-content', '.sidebar',
+    '.author-info', '.metrics', '.advertisement', '.ads',
+    '.cookie', '.supplementary', '.footnotes'
+  ];
+
+  for (const sel of badSelectors) {
+    root.querySelectorAll(sel).forEach(el => el.remove());
+  }
+}
+
+export function getArticleText() {
+  const selectors = [
+    'article',
+    'main',
+    '[role="main"]',
+    '.article-body',
+    '.article-content',
+    '.main-content',
+    '.post-content',
+    '.entry-content',
+    '.full-text',
+    '.html-body',
+  ];
+
+  const candidates = [...new Set(
+    selectors.flatMap(sel => [...document.querySelectorAll(sel)])
+  )];
+
+  if (candidates.length === 0) {
+    candidates.push(document.body);
+  }
+
+  const scored = candidates.map(node => ({
+    node,
+    score: scoreNode(node),
+  }));
+
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0].node.cloneNode(true);
+
+  removeNoise(best);
+
+  let blocks = [...best.querySelectorAll('h2, h3, h4, p, figcaption')]
+    .map(el => el.innerText.trim())
+    .filter(Boolean)
+    .map(cleanBlock);
+
+  blocks = mergeHeadingsWithFollowingBlocks(blocks);
+  blocks = cutBlocksAfterTerminalSections(blocks);
+
+  return blocks.join('\n');
+}
+
+function cleanBlock(text) {
+  return text
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{2,}/g, '\n')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .join(' ');
+}
+
+function mergeHeadingsWithFollowingBlocks(blocks) {
+  const merged = [];
+  let i = 0;
+
+  while (i < blocks.length) {
+    const curr = blocks[i];
+    const next = blocks[i + 1];
+
+    if (isLikelyHeading(curr) && next) {
+      merged.push(curr + ' ' + next);
+      i += 2;
+    } else {
+      merged.push(curr);
+      i += 1;
+    }
+  }
+
+  return merged;
+}
+
+function isLikelyHeading(text) {
+  if (text.length === 0) return false;
+  if (text.length > 80) return false;
+  if (/[.!?:;]$/.test(text)) return false;
+  return true;
+}
+
+function cutBlocksAfterTerminalSections(blocks) {
+  const stopHeaders = new Set([
+    'references',
+    'citations',
+    'acknowledgements',
+    'funding',
+    'conflict of interest',
+    'data availability',
+    'supplementary material'
+  ]);
+
+  const out = [];
+
+  for (const block of blocks) {
+    if (stopHeaders.has(block.trim().toLowerCase())) break;
+    out.push(block);
+  }
+
+  return out;
 }

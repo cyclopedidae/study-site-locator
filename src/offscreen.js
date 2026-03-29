@@ -10,10 +10,22 @@ env.localModelPath = chrome.runtime.getURL('models/');
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) =>  {
     if (request.action === "run_ner") {
         (async() => {
-            try {
-                const result = await runNER(request.data.slice(0, 1));
-                console.log(result);
-                sendResponse({ status: 'ok', entities: result });
+            try {                
+                for (let i = 0; i < request.data.length; i++) {
+                    const start = performance.now();
+                    const result = await runNER(request.data[i]);
+
+                    const relevant = result.filter(ent =>
+                        ent.entity.endsWith("LOC") || ent.entity.endsWith("ORG")
+                    )
+
+                    const end = performance.now();
+                    
+                    console.log(relevant);
+                    console.log(`Length of chunk: `, request.data[i].length)
+                    console.log(`Elapsed: ${(end - start).toFixed(2)} ms`);
+                }
+                sendResponse({ status: 'ok', entities: relevant });
             } catch (error) {
                 sendResponse({ status: 'offscreen ner error', message: error.message });
             }
@@ -32,7 +44,7 @@ async function runNER(chunk) {
 
 async function getNER() {
   if (!nerPipeline) {
-    nerPipeline = pipeline('token-classification', 'Xenova/bert-base-NER');
+    nerPipeline = await pipeline('token-classification', 'Xenova/bert-base-NER');
   }
   return nerPipeline
 }
