@@ -30,7 +30,7 @@ export function getPortionedChunks(body) {
             let addedChunks = chunks[i];
 
             for (let j = 1; j <= numChunksToAdd; j++) {
-                addedChunks += chunks[i + j];
+                addedChunks += ' ' + chunks[i + j];
             }
             
             portions.push(addedChunks);
@@ -171,34 +171,39 @@ function countCharacter(str, char) {
     return matches ? matches.length : 0;
 }
 
-function scoreNode(node) {
-  const text = node.innerText || '';
-  const pCount = node.querySelectorAll('p').length;
-  const linkCount = node.querySelectorAll('a').length;
-  const buttonCount = node.querySelectorAll('button').length;
-  const liCount = node.querySelectorAll('li').length;
+export function getCandidateRecords() {
+    const best = getBestArticleRoot();
+    removeNoise(best);
 
-  const textLen = text.length;
-  const penalty = linkCount * 20 + buttonCount * 30 + liCount * 8;
+    let records = [...best.querySelectorAll('h2, h3, h4, p, figcaption')]
+        .map(el => {
+        const built = buildCleanedTextWithMap(el.innerText || '');
 
-  return textLen + pCount * 200 - penalty;
+        return {
+            element: el,
+            originalText: built.originalText,
+            text: built.cleanedText,
+            offsetMap: built.offsetMap
+        };
+        })
+        .filter(record => record.text);
+
+    // TEMP: disable heading merging until offsets work correctly
+    // records = mergeHeadingRecords(records);
+
+    records = cutRecordsAfterTerminalSections(records);
+
+    return records
+        .map((record, index) => ({
+        index,
+        element: record.element,
+        originalText: record.originalText,
+        text: record.text,
+        offsetMap: record.offsetMap
+        }))
+        .filter(record => scoreBlockForNER(record.text) >= 2);
 }
-
-function removeNoise(root) {
-  const badSelectors = [
-    'nav', 'header', 'footer', 'aside', 'form', 'button',
-    '.references', '.reference', '.citations', '.citation',
-    '.related-articles', '.related-content', '.sidebar',
-    '.author-info', '.metrics', '.advertisement', '.ads',
-    '.cookie', '.supplementary', '.footnotes'
-  ];
-
-  for (const sel of badSelectors) {
-    root.querySelectorAll(sel).forEach(el => el.remove());
-  }
-}
-
-export function getArticleText() {
+function getBestArticleRoot() {
   const selectors = [
     'article',
     'main',
@@ -210,6 +215,10 @@ export function getArticleText() {
     '.entry-content',
     '.full-text',
     '.html-body',
+    'conflict-of-interest',
+    'body main-article-body',
+    'ArticleContent',
+    'article-container'
   ];
 
   const candidates = [...new Set(
@@ -226,41 +235,123 @@ export function getArticleText() {
   }));
 
   scored.sort((a, b) => b.score - a.score);
-  const best = scored[0].node.cloneNode(true);
+  return scored[0].node.cloneNode(true);
+}
 
-  removeNoise(best);
+function cutRecordsAfterTerminalSections(records) {
+  const stopHeaders = new Set([
+    'references',
+    'citations',
+    'acknowledgements',
+    'funding',
+    'conflict of interest',
+    'data availability',
+    'supplementary material',
+    'keywords',
+    'citation',
+    'copyright',
+    'supporting information'
+  ]);
 
-  let blocks = [...best.querySelectorAll('h2, h3, h4, p, figcaption')]
-    .map(el => el.innerText.trim())
-    .filter(Boolean)
-    .map(cleanBlock);
+  const out = [];
 
-  blocks = mergeHeadingsWithFollowingBlocks(blocks);
-  blocks = cutBlocksAfterTerminalSections(blocks);
+  for (const record of records) {
+    if (!record?.text) continue;
 
-  return blocks.join('\n');
+    if (stopHeaders.has(record.text.trim().toLowerCase())) break;
+    out.push(record);
+  }
+
+  return out;
+}
+
+// Likelihood of node being the main article content
+function scoreNode(node) {
+  const text = node.innerText || '';
+  const pCount = node.querySelectorAll('p').length;
+  const linkCount = node.querySelectorAll('a').length;
+  const buttonCount = node.querySelectorAll('button').length;
+  const liCount = node.querySelectorAll('li').length; // list items
+
+  const textLen = text.length;
+  const penalty = linkCount * 20 + buttonCount * 30 + liCount * 8;
+
+  return textLen + pCount * 200 - penalty;
+}
+
+function removeNoise(root) {
+  const badSelectors = [
+    'nav', 'header', 'footer', 'aside', 'form', 'button',
+    '.references', '.reference', '.citations', '.citation',
+    '.related-articles', '.related-content', '.sidebar',
+    '.author-info', '.metrics', '.advertisement', '.ads',
+    '.cookie', '.supplementary', '.footnotes', 'sub', '.copyright',
+    '.disclaimer', '.similar', '.similar-articles', '.citedby', 
+    '.citedby-articles',
+
+    // Frontiers
+    '.PeopleList', '.AffiliationList', '.RelatedArticles', '.ArticleTable', 
+    '.ArticleFigure','.ArticleReference', '.Statement__Authorcontributions', 
+    '.References', '.Summary', '.Editor & Reviewers', '.Statement__Supplementarymaterial',
+    '.Statement__Acknowledgments',
+
+    // PMC Pubmed
+    '.usa-link', '.tbl-box p', '.ack1', '.ack', '.funding-statement1', '.ref-list1', '.ref-list'
+  ];
+
+  for (const sel of badSelectors) {
+    root.querySelectorAll(sel).forEach(el => el.remove());
+  }
 }
 
 function cleanBlock(text) {
-  return text
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\n{2,}/g, '\n')
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .join(' ');
+    return text
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{2,}/g, '\n')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .join(' ');
 }
 
-function mergeHeadingsWithFollowingBlocks(blocks) {
+function isLikelyHeading(text) {
+    if (text.length === 0) return false;
+    if (text.length > 80) return false;
+    if (/[.!?:;]$/.test(text)) return false;
+    return true;
+}
+
+function scoreBlockForNER(block) {
+    let score = 0;
+
+    if (/\b(university|institute|hospital|laboratory|lab|province)\b/i.test(block)) score += 3;
+    if (/\b(department of|school of|faculty of)\b/i.test(block)) score += 3;
+    if (/\b(canada|usa|united states|uk|france|germany|china|japan|australia)\b/i.test(block)) score += 2;
+    if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}/.test(block)) score += 1; // proper-name-ish phrase
+    if (block.length < 40) score -= 2;
+    if (/^\d+(\.|\))/ .test(block)) score -= 1;
+    if (/\b(references|acknowledgements|supplementary)\b/i.test(block)) score -= 5;
+
+    return score;
+    }
+
+    export function generateCandidates(blocks, minScore = 2) {
+    return blocks.filter(block => scoreBlockForNER(block) >= minScore);
+}
+
+function mergeHeadingRecords(records) {
   const merged = [];
   let i = 0;
 
-  while (i < blocks.length) {
-    const curr = blocks[i];
-    const next = blocks[i + 1];
+  while (i < records.length) {
+    const curr = records[i];
+    const next = records[i + 1];
 
-    if (isLikelyHeading(curr) && next) {
-      merged.push(curr + ' ' + next);
+    if (isLikelyHeading(curr.text) && next) {
+      merged.push({
+        element: next.element,
+        text: `${curr.text} ${next.text}`
+      });
       i += 2;
     } else {
       merged.push(curr);
@@ -271,30 +362,40 @@ function mergeHeadingsWithFollowingBlocks(blocks) {
   return merged;
 }
 
-function isLikelyHeading(text) {
-  if (text.length === 0) return false;
-  if (text.length > 80) return false;
-  if (/[.!?:;]$/.test(text)) return false;
-  return true;
-}
+function buildCleanedTextWithMap(text) {
+    const original = text || '';
+    let cleaned = '';
+    const offsetMap = [];
 
-function cutBlocksAfterTerminalSections(blocks) {
-  const stopHeaders = new Set([
-    'references',
-    'citations',
-    'acknowledgements',
-    'funding',
-    'conflict of interest',
-    'data availability',
-    'supplementary material'
-  ]);
+    let prevWasSpace = false;
 
-  const out = [];
+    for (let i = 0; i < original.length; i++) {
+        const ch = original[i];
+        const isSpace = /\s/.test(ch);
 
-  for (const block of blocks) {
-    if (stopHeaders.has(block.trim().toLowerCase())) break;
-    out.push(block);
-  }
+        if (isSpace) {
+        if (!prevWasSpace) {
+            cleaned += ' ';
+            offsetMap.push(i);
+            prevWasSpace = true;
+        }
+        } else {
+        cleaned += ch;
+        offsetMap.push(i);
+        prevWasSpace = false;
+        }
+    }
 
-  return out;
+    // trim leading/trailing spaces while keeping offset map aligned
+    let start = 0;
+    let end = cleaned.length;
+
+    while (start < end && cleaned[start] === ' ') start++;
+    while (end > start && cleaned[end - 1] === ' ') end--;
+
+    return {
+        originalText: original,
+        cleanedText: cleaned.slice(start, end),
+        offsetMap: offsetMap.slice(start, end)
+    };
 }
