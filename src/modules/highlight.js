@@ -3,50 +3,12 @@ export function highlightEntitiesInElement(element, entities) {
 
   ensureHighlightStyle();
 
-  const textNodes = getTextNodes(element);
-  const fullText = textNodes.map(n => n.nodeValue).join('');
-
-  console.log("[HIGHLIGHT] ===== BLOCK START =====");
-  console.log("[HIGHLIGHT] Element:", element);
-  console.log("[HIGHLIGHT] Full reconstructed text:", fullText);
-  console.log("[HIGHLIGHT] Incoming entities:", entities);
-
-  // Sort descending so later spans don't shift earlier offsets
-  const sorted = [...entities]
-    .filter(ent =>
-      ent &&
-      typeof ent.start === 'number' &&
-      typeof ent.end === 'number' &&
-      ent.end > ent.start
-    )
-    .sort((a, b) => b.start - a.start);
-
   let total = 0;
+  const sorted = [...entities].sort((a, b) => b.length - a.length);
 
-  for (const ent of sorted) {
-    const expected = fullText.slice(ent.start, ent.end);
-
-    console.log(`\n[HIGHLIGHT] Trying entity "${ent.text}"`);
-    console.log("[HIGHLIGHT] start/end:", ent.start, ent.end);
-    console.log("[HIGHLIGHT] text at offsets:", expected);
-
-    if (!expected.trim()) {
-      console.warn("[HIGHLIGHT] Skipping empty offset match:", ent);
-      continue;
-    }
-
-    const ok = wrapRangeByOffsets(textNodes, ent.start, ent.end, ent.text);
-
-    if (ok) {
-      total++;
-      console.log(`[HIGHLIGHT] SUCCESS: highlighted "${ent.text}"`);
-    } else {
-      console.warn(`[HIGHLIGHT] FAILED: could not highlight "${ent.text}"`);
-    }
+  for (const entity of sorted) {
+    total += highlightPhraseWithinRoot(element, entity);
   }
-
-  console.log("[HIGHLIGHT] Total exact-offset highlights in block:", total);
-  console.log("[HIGHLIGHT] ===== BLOCK END =====");
 
   return total;
 }
@@ -63,7 +25,14 @@ export function clearHighlights() {
   }
 }
 
-function getTextNodes(root) {
+function highlightPhraseWithinRoot(root, phrase) {
+  if (!phrase || !phrase.trim()) return 0;
+
+  const escaped = escapeRegex(phrase.trim());
+  const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
+
+  console.log(`[HIGHLIGHT] Looking for phrase: "${phrase}"`);
+
   const walker = document.createTreeWalker(
     root,
     NodeFilter.SHOW_TEXT,
@@ -87,61 +56,53 @@ function getTextNodes(root) {
     nodes.push(node);
   }
 
-  return nodes;
+  let count = 0;
+
+  for (const textNode of nodes) {
+    const text = textNode.nodeValue;
+    regex.lastIndex = 0;
+
+    if (!regex.test(text)) continue;
+    regex.lastIndex = 0;
+
+    console.log("[HIGHLIGHT] Match found in text node:", text);
+
+    const fragment = document.createDocumentFragment();
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+
+      if (start > lastIndex) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, start)));
+      }
+
+      const mark = document.createElement('mark');
+      mark.className = 'ner-highlight';
+      mark.textContent = text.slice(start, end);
+      fragment.appendChild(mark);
+
+      console.log("[HIGHLIGHT] Highlighted:", match[0]);
+
+      lastIndex = end;
+      count++;
+    }
+
+    if (lastIndex < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+
+    textNode.parentNode.replaceChild(fragment, textNode);
+  }
+
+  console.log(`[HIGHLIGHT] Total matches for "${phrase}":`, count);
+  return count;
 }
 
-function wrapRangeByOffsets(textNodes, start, end, labelText = "") {
-  let currentOffset = 0;
-  let startNode = null;
-  let endNode = null;
-  let startOffsetInNode = 0;
-  let endOffsetInNode = 0;
-
-  for (const node of textNodes) {
-    const len = node.nodeValue.length;
-    const nodeStart = currentOffset;
-    const nodeEnd = currentOffset + len;
-
-    if (!startNode && start >= nodeStart && start < nodeEnd) {
-      startNode = node;
-      startOffsetInNode = start - nodeStart;
-    }
-
-    if (!endNode && end > nodeStart && end <= nodeEnd) {
-      endNode = node;
-      endOffsetInNode = end - nodeStart;
-    }
-
-    currentOffset = nodeEnd;
-  }
-
-  if (!startNode || !endNode) {
-    console.warn("[HIGHLIGHT] Could not resolve DOM nodes for offsets:", {
-      labelText, start, end
-    });
-    return false;
-  }
-
-  try {
-    const range = document.createRange();
-    range.setStart(startNode, startOffsetInNode);
-    range.setEnd(endNode, endOffsetInNode);
-
-    const mark = document.createElement('mark');
-    mark.className = 'ner-highlight';
-    mark.dataset.entity = labelText;
-
-    range.surroundContents(mark);
-    return true;
-  } catch (err) {
-    console.warn("[HIGHLIGHT] surroundContents failed:", {
-      labelText,
-      start,
-      end,
-      error: err
-    });
-    return false;
-  }
+function escapeRegex(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function ensureHighlightStyle() {

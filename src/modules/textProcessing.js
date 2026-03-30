@@ -1,3 +1,23 @@
+const NOISE_SELECTORS = [
+  'nav', 'header', 'footer', 'aside', 'form', 'button',
+  '.references', '.reference', '.citations', '.citation',
+  '.related-articles', '.related-content', '.sidebar',
+  '.author-info', '.metrics', '.advertisement', '.ads',
+  '.cookie', '.supplementary', '.footnotes', 'sub', '.copyright',
+  '.disclaimer', '.similar', '.similar-articles', '.citedby',
+  '.citedby-articles',
+
+  // Frontiers
+  '.PeopleList', '.AffiliationList', '.RelatedArticles', '.ArticleTable',
+  '.ArticleFigure', '.ArticleReference', '.Statement__Authorcontributions',
+  '.References', '.Summary', '.Editor\\ \\&\\ Reviewers',
+  '.Statement__Supplementarymaterial', '.Statement__Acknowledgments',
+
+  // PMC / PubMed
+  '.usa-link', '.tbl-box p', '.ack1', '.ack',
+  '.funding-statement1', '.ref-list1', '.ref-list'
+];
+
 export function getPortionedChunks(body) {
     const chunks = chunkify(body);
     const portions = [];
@@ -39,7 +59,6 @@ export function getPortionedChunks(body) {
     }
     const result = removeEmptyStrings(portions)
     return result;
-
 }
 
 function removeEmptyStrings(arr) {
@@ -97,7 +116,7 @@ function getSplitChunks(chunk, lowerBound) {
 
             split_chunks.push(chunk.substring(startIndex, endIndex));
             startIndex = endIndex + 1;
-            }
+        }
 
     } else {
         const mid = Math.floor(chunk.length / 2);
@@ -144,8 +163,6 @@ function getChunksToAdd(chunks, i, lowerBound) {
 }
 
 function chunkify(body) {
-    // can just do: return body.split('\n');
-    // cry
     const bd = body + '\n';
     const separator = '\n';
 
@@ -157,7 +174,6 @@ function chunkify(body) {
 
     for(let i = 0; i < count; i++) {
         endIndex = bd.indexOf(separator, startIndex);
-        // Add line to chunk
         chunks.push(bd.substring(startIndex, endIndex));
         startIndex = endIndex + 1;
     }
@@ -172,37 +188,28 @@ function countCharacter(str, char) {
 }
 
 export function getCandidateRecords() {
-    const best = getBestArticleRoot();
-    removeNoise(best);
+  const best = getBestArticleRoot();
 
-    let records = [...best.querySelectorAll('h2, h3, h4, p, figcaption')]
-        .map(el => {
-        const built = buildCleanedTextWithMap(el.innerText || '');
+  let records = [...best.querySelectorAll('h2, h3, h4, p, figcaption')]
+    .filter(el => !isInNoise(el))
+    .map(el => ({
+      element: el,
+      text: cleanBlock(el.innerText || '')
+    }))
+    .filter(record => record.text);
 
-        return {
-            element: el,
-            originalText: built.originalText,
-            text: built.cleanedText,
-            offsetMap: built.offsetMap
-        };
-        })
-        .filter(record => record.text);
+  records = mergeHeadingRecords(records);
+  records = cutRecordsAfterTerminalSections(records);
 
-    // TEMP: disable heading merging until offsets work correctly
-    // records = mergeHeadingRecords(records);
-
-    records = cutRecordsAfterTerminalSections(records);
-
-    return records
-        .map((record, index) => ({
-        index,
-        element: record.element,
-        originalText: record.originalText,
-        text: record.text,
-        offsetMap: record.offsetMap
-        }))
-        .filter(record => scoreBlockForNER(record.text) >= 2);
+  return records
+    .map((record, index) => ({
+      index,
+      element: record.element,
+      text: record.text
+    }))
+    .filter(record => scoreBlockForNER(record.text) >= 2);
 }
+
 function getBestArticleRoot() {
   const selectors = [
     'article',
@@ -235,7 +242,9 @@ function getBestArticleRoot() {
   }));
 
   scored.sort((a, b) => b.score - a.score);
-  return scored[0].node.cloneNode(true);
+
+  console.log("[TEXT] Best article root chosen:", scored[0]);
+  return scored[0].node;
 }
 
 function cutRecordsAfterTerminalSections(records) {
@@ -250,7 +259,9 @@ function cutRecordsAfterTerminalSections(records) {
     'keywords',
     'citation',
     'copyright',
-    'supporting information'
+    'supporting information',
+    'Statement__Conflictofinterest',
+    'References'
   ]);
 
   const out = [];
@@ -258,20 +269,24 @@ function cutRecordsAfterTerminalSections(records) {
   for (const record of records) {
     if (!record?.text) continue;
 
-    if (stopHeaders.has(record.text.trim().toLowerCase())) break;
+    const lowered = record.text.trim().toLowerCase();
+    if (stopHeaders.has(lowered)) {
+      console.log("[TEXT] Stopping at terminal section:", record.text);
+      break;
+    }
+
     out.push(record);
   }
 
   return out;
 }
 
-// Likelihood of node being the main article content
 function scoreNode(node) {
   const text = node.innerText || '';
   const pCount = node.querySelectorAll('p').length;
   const linkCount = node.querySelectorAll('a').length;
   const buttonCount = node.querySelectorAll('button').length;
-  const liCount = node.querySelectorAll('li').length; // list items
+  const liCount = node.querySelectorAll('li').length;
 
   const textLen = text.length;
   const penalty = linkCount * 20 + buttonCount * 30 + liCount * 8;
@@ -280,28 +295,13 @@ function scoreNode(node) {
 }
 
 function removeNoise(root) {
-  const badSelectors = [
-    'nav', 'header', 'footer', 'aside', 'form', 'button',
-    '.references', '.reference', '.citations', '.citation',
-    '.related-articles', '.related-content', '.sidebar',
-    '.author-info', '.metrics', '.advertisement', '.ads',
-    '.cookie', '.supplementary', '.footnotes', 'sub', '.copyright',
-    '.disclaimer', '.similar', '.similar-articles', '.citedby', 
-    '.citedby-articles',
-
-    // Frontiers
-    '.PeopleList', '.AffiliationList', '.RelatedArticles', '.ArticleTable', 
-    '.ArticleFigure','.ArticleReference', '.Statement__Authorcontributions', 
-    '.References', '.Summary', '.Editor & Reviewers', '.Statement__Supplementarymaterial',
-    '.Statement__Acknowledgments',
-
-    // PMC Pubmed
-    '.usa-link', '.tbl-box p', '.ack1', '.ack', '.funding-statement1', '.ref-list1', '.ref-list'
-  ];
-
-  for (const sel of badSelectors) {
+  for (const sel of NOISE_SELECTORS) {
     root.querySelectorAll(sel).forEach(el => el.remove());
   }
+}
+
+function isInNoise(el) {
+  return NOISE_SELECTORS.some(sel => el.closest(sel));
 }
 
 function cleanBlock(text) {
@@ -324,18 +324,19 @@ function isLikelyHeading(text) {
 function scoreBlockForNER(block) {
     let score = 0;
 
-    if (/\b(university|institute|hospital|laboratory|lab|province)\b/i.test(block)) score += 3;
+    if (/\b(university|institute|laboratory|lab)\b/i.test(block)) score += 3;
+    if (/\b(hospital|province)\b/i.test(block)) score += 4;
     if (/\b(department of|school of|faculty of)\b/i.test(block)) score += 3;
-    if (/\b(canada|usa|united states|uk|france|germany|china|japan|australia)\b/i.test(block)) score += 2;
-    if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}/.test(block)) score += 1; // proper-name-ish phrase
+    if (/\b(canada|usa|united states|uk|france|germany|china|japan|australia|sweden)\b/i.test(block)) score += 2;
+    if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}/.test(block)) score += 1;
     if (block.length < 40) score -= 2;
-    if (/^\d+(\.|\))/ .test(block)) score -= 1;
+    if (/^\d+(\.|\))/.test(block)) score -= 1;
     if (/\b(references|acknowledgements|supplementary)\b/i.test(block)) score -= 5;
 
     return score;
-    }
+}
 
-    export function generateCandidates(blocks, minScore = 2) {
+export function generateCandidates(blocks, minScore = 2) {
     return blocks.filter(block => scoreBlockForNER(block) >= minScore);
 }
 
@@ -360,42 +361,4 @@ function mergeHeadingRecords(records) {
   }
 
   return merged;
-}
-
-function buildCleanedTextWithMap(text) {
-    const original = text || '';
-    let cleaned = '';
-    const offsetMap = [];
-
-    let prevWasSpace = false;
-
-    for (let i = 0; i < original.length; i++) {
-        const ch = original[i];
-        const isSpace = /\s/.test(ch);
-
-        if (isSpace) {
-        if (!prevWasSpace) {
-            cleaned += ' ';
-            offsetMap.push(i);
-            prevWasSpace = true;
-        }
-        } else {
-        cleaned += ch;
-        offsetMap.push(i);
-        prevWasSpace = false;
-        }
-    }
-
-    // trim leading/trailing spaces while keeping offset map aligned
-    let start = 0;
-    let end = cleaned.length;
-
-    while (start < end && cleaned[start] === ' ') start++;
-    while (end > start && cleaned[end - 1] === ' ') end--;
-
-    return {
-        originalText: original,
-        cleanedText: cleaned.slice(start, end),
-        offsetMap: offsetMap.slice(start, end)
-    };
 }

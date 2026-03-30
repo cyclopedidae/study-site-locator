@@ -1,19 +1,28 @@
 let creating; // global promise to avoid concurrency issues for offscreen
-const extractedTabs = {}; //   url: url, done: boolean
+const extractedTabs = {}; // tabId -> { url, done }
 
-// ----- LISTENERS  -----
+// ----- LISTENERS -----
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "analyze_text") {
-    (async() => {
+    (async () => {
       try {
-        await setupOffscreenDocument("offscreen.html");
-        
-        const result = await chrome.runtime.sendMessage({ action: 'run_ner', data: request.data });
+        console.log("[BACKGROUND] analyze_text received");
+        console.log("[BACKGROUND] Incoming blocks:", request.data);
 
-        sendResponse({ status: "ok", data: result});
+        await setupOffscreenDocument("offscreen.html");
+        console.log("[BACKGROUND] Offscreen document ready");
+
+        const result = await chrome.runtime.sendMessage({
+          action: 'run_ner',
+          data: request.data
+        });
+
+        console.log("[BACKGROUND] NER result from offscreen:", result);
+
+        sendResponse({ status: "ok", data: result });
       } catch (err) {
-        console.error("Background call to NER failed.", err);
+        console.error("[BACKGROUND] Call to NER failed:", err);
         sendResponse({ status: "error", message: err.message });
       }
     })();
@@ -46,7 +55,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   delete extractedTabs[tabId];
 });
 
-// ----- HELPER FUNCTIONS  -----
+// ----- HELPER FUNCTIONS -----
 
 async function setupOffscreenDocument(path) {
   const offscreenUrl = chrome.runtime.getURL(path);
@@ -55,13 +64,16 @@ async function setupOffscreenDocument(path) {
     documentUrls: [offscreenUrl]
   });
 
-  // only one may exist
-  if (existingContexts.length > 0) return;
+  if (existingContexts.length > 0) {
+    console.log("[BACKGROUND] Offscreen document already exists");
+    return;
+  }
 
-  // create offscreen document
   if (creating) {
+    console.log("[BACKGROUND] Awaiting existing offscreen creation...");
     await creating;
   } else {
+    console.log("[BACKGROUND] Creating offscreen document...");
     creating = chrome.offscreen.createDocument({
       url: path,
       reasons: ['WORKERS'],
@@ -70,12 +82,14 @@ async function setupOffscreenDocument(path) {
 
     await creating;
     creating = null;
+    console.log("[BACKGROUND] Offscreen document created");
   }
 }
 
 async function isAutoExtractEnabled() {
   const { autoExtractEnabled: enabled = false } =
     await chrome.storage.local.get("autoExtractEnabled");
+
   return enabled;
 }
 
@@ -92,7 +106,8 @@ function isAcceptedUrl(urlString) {
       host === "nature.com" ||
       host.endsWith(".nature.com") ||
       host === "frontiersin.org" ||
-      host === "springer.com"
+      host === "springer.com" ||
+      host.endsWith(".springer.com")
     );
   } catch {
     return false;
@@ -106,19 +121,23 @@ async function maybeExtract(tabId, url) {
 
   const record = extractedTabs[tabId];
 
-  // already extracted for this exact page
   if (record && record.url === url && record.done) {
+    console.log("[BACKGROUND] Already extracted for this page:", url);
     return;
   }
 
   try {
+    console.log("[BACKGROUND] Triggering extract_text for:", url);
+
     await chrome.tabs.sendMessage(tabId, { action: "extract_text" });
 
     extractedTabs[tabId] = {
       url: url,
       done: true
     };
+
+    console.log("[BACKGROUND] Extraction marked done for:", url);
   } catch (err) {
-    console.log(`Could not message tab ${url}:`, err);
+    console.log(`[BACKGROUND] Could not message tab ${url}:`, err);
   }
 }

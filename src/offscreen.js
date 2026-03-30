@@ -8,81 +8,73 @@ env.allowRemoteModels = false;
 env.localModelPath = chrome.runtime.getURL('models/');
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "run_ner") {
-        (async () => {
-        try {
-            const matches = [];
+  if (request.action === "run_ner") {
+    (async () => {
+      try {
+        console.log("[OFFSCREEN] ===== NER RUN START =====");
+        console.log("[OFFSCREEN] Total candidate blocks:", request.data.length);
 
-            console.log("[OFFSCREEN] ===== NER RUN START =====");
-            console.log("[OFFSCREEN] Total candidate blocks:", request.data.length);
+        const matches = [];
 
-            for (let i = 0; i < request.data.length; i++) {
-            const blockText = request.data[i];
-            console.log(`\n[OFFSCREEN] --- Block ${i} ---`);
-            console.log("[OFFSCREEN] Input text:", blockText);
+        for (let i = 0; i < request.data.length; i++) {
+          const blockText = request.data[i];
 
-            const test = "Patients were recruited in Sweden.";
-            const result = await runNER(test); //blockText
-            console.log("[OFFSCREEN] TEST STRING:", test);
-            console.log("[OFFSCREEN] RAW TEST RESULT:", JSON.stringify(result, null, 2));
+          console.log(`\n[OFFSCREEN] --- Block ${i} ---`);
+          console.log("[OFFSCREEN] Input text:", blockText);
 
-            console.log("[OFFSCREEN] Raw NER result:", result);
+          const result = await runNER(blockText);
+          console.log("[OFFSCREEN] Raw NER result:", result);
 
-            const rawRelevant = result.filter(ent =>
-                ent.entity.endsWith('LOC') || ent.entity.endsWith('ORG')
-            );
-            console.log("[OFFSCREEN] Raw relevant LOC/ORG:", rawRelevant);
+          // Filter for relevant entity types
+          const rawRelevant = result.filter(ent =>
+            ent.entity.endsWith('LOC') || ent.entity.endsWith('ORG')
+          );
 
-            const mergedRelevant = mergeEntities(rawRelevant);
-            console.log("[OFFSCREEN] Merged relevant:", mergedRelevant);
+          console.log("[OFFSCREEN] Raw relevant LOC/ORG:", rawRelevant);
 
-            const useful = mergedRelevant.filter(isUsefulEntity);
-            console.log("[OFFSCREEN] Useful entities before dedupe:", useful);
-            console.log("[OFFSCREEN] Useful entities after dedupe:", dedupeEntities(useful));
+          // Merge subword tokens into full entities
+          const mergedRelevant = mergeEntities(rawRelevant);
+          console.log("[OFFSCREEN] Merged relevant:", mergedRelevant);
 
-            if (useful.length > 0) {
-                matches.push({
-                index: i,
-                entities: dedupeEntities(useful)
-                });
+          // Filter out useless words
+          const useful = mergedRelevant.filter(isUsefulEntity);
+          console.log("[OFFSCREEN] Useful entities:", useful);
 
-                console.log("[OFFSCREEN] Final kept entities for block:", dedupeEntities(useful));
-            } else {
-                console.log("[OFFSCREEN] No useful entities kept for this block.");
-            }
-            }
+          if (useful.length > 0) {
+            const deduped = dedupe(useful.map(ent => ent.text));
 
-            // test
-            for (const token of result) {
-                console.log("[OFFSCREEN] TOKEN", {
-                word: token.word,
-                entity: token.entity,
-                start: token.start,
-                end: token.end,
-                index: token.index,
-                score: token.score
-                });
-            }
+            console.log("[OFFSCREEN] Final deduped entity texts:", deduped);
 
-            console.log("\n[OFFSCREEN] ===== NER RUN END =====");
-            console.log("[OFFSCREEN] Final matches payload:", matches);
-
-            sendResponse({
-            status: "ok",
-            matches
+            matches.push({
+              index: i,
+              entities: deduped
             });
-        } catch (error) {
-            console.error("[OFFSCREEN] NER ERROR:", error);
-            sendResponse({
-            status: "offscreen ner error",
-            message: error.message
-            });
+          } else {
+            console.log("[OFFSCREEN] No useful entities in this block");
+          }
         }
-        })();
 
-        return true;
-    }
+        console.log("\n[OFFSCREEN] ===== NER RUN END =====");
+        console.log("[OFFSCREEN] Final matches payload:", matches);
+
+        sendResponse({
+          status: "ok",
+          matches
+        });
+      } catch (error) {
+        console.error("[OFFSCREEN] NER ERROR:", error);
+        sendResponse({
+          status: "offscreen ner error",
+          message: error.message
+        });
+      }
+    })();
+
+    return true;
+  }
 });
+
+// ----- NER PIPELINE -----
 
 async function runNER(chunk) {
   const ner = await getNER();
@@ -91,10 +83,14 @@ async function runNER(chunk) {
 
 async function getNER() {
   if (!nerPipeline) {
+    console.log("[OFFSCREEN] Loading NER model...");
     nerPipeline = await pipeline('token-classification', 'Xenova/bert-base-NER');
+    console.log("[OFFSCREEN] NER model loaded");
   }
   return nerPipeline;
 }
+
+// ----- HELPERS -----
 
 function isUsefulEntity(ent) {
   const badWords = new Set([
@@ -105,82 +101,58 @@ function isUsefulEntity(ent) {
   ]);
 
   const text = (ent.text || '').trim();
+
   if (!text) return false;
   if (text.length < 3) return false;
   if (badWords.has(text.toLowerCase())) return false;
+
   return true;
 }
 
-function dedupeEntities(entities) {
-    const seen = new Set();
-    const out = [];
-
-    for (const ent of entities) {
-        const text = (ent.text || '').trim();
-        const start = Number.isFinite(ent.start) ? ent.start : null;
-        const end = Number.isFinite(ent.end) ? ent.end : null;
-        const type = ent.type || null;
-
-        if (!text) continue;
-        if (start === null || end === null) {
-        console.warn("[OFFSCREEN] Dropping entity with bad offsets:", ent);
-        continue;
-        }
-
-        const key = `${text.toLowerCase()}|${start}|${end}|${type}`;
-        if (seen.has(key)) continue;
-
-        seen.add(key);
-        out.push({ text, start, end, type });
-    }
-
-    return out;
+function dedupe(arr) {
+  return [...new Set(arr.map(x => x.trim()).filter(Boolean))];
 }
 
 function mergeEntities(tokens) {
-    const merged = [];
-    let current = null;
+  const merged = [];
+  let current = null;
 
-    for (const token of tokens) {
-        const label = token.entity;
-        const word = token.word ?? '';
+  console.log("[OFFSCREEN] mergeEntities input:", tokens);
 
-        if (!label || !word) continue;
-        if (!Number.isFinite(token.start) || !Number.isFinite(token.end)) {
-        console.warn("[OFFSCREEN] Token missing offsets:", token);
-        continue;
-        }
+  for (const token of tokens) {
+    const label = token.entity;
+    const word = token.word ?? '';
 
-        const isBegin = label.startsWith('B-');
-        const isInside = label.startsWith('I-');
-        const type = label.slice(2);
+    if (!label || !word) continue;
 
-        if (!current || isBegin || current.type !== type) {
-        if (current) merged.push(current);
+    const isBegin = label.startsWith('B-');
+    const isInside = label.startsWith('I-');
+    const type = label.slice(2);
 
-        current = {
-            type,
-            text: cleanToken(word),
-            start: token.start,
-            end: token.end
-        };
-        continue;
-        }
+    if (!current || isBegin || current.type !== type) {
+      if (current) merged.push(current);
 
-        if (isInside && current.type === type) {
-        current.text += word.startsWith('##')
-            ? word.slice(2)
-            : ' ' + cleanToken(word);
-
-        current.end = token.end;
-        }
+      current = {
+        type,
+        text: cleanToken(word)
+      };
+      continue;
     }
 
-    if (current) merged.push(current);
+    if (isInside && current.type === type) {
+      current.text += word.startsWith('##')
+        ? word.slice(2)
+        : ' ' + cleanToken(word);
+    }
+  }
 
-    console.log("[OFFSCREEN] mergeEntities output:", merged);
-    return merged;
+  if (current) merged.push(current);
+
+  console.log("[OFFSCREEN] mergeEntities output:", merged);
+
+  return merged;
 }
+
 function cleanToken(word) {
   return word.replace(/^##/, '').trim();
 }
