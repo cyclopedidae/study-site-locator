@@ -1,4 +1,11 @@
-import { highlightEntitiesInElement, clearHighlights } from './modules/highlight.js';
+import {
+  highlightEntitiesInElement,
+  clearHighlights,
+  refreshHighlightNavigator,
+  nextHighlight,
+  previousHighlight
+} from './modules/highlight.js';
+
 import { getCandidateRecords } from './modules/textProcessing.js';
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -51,6 +58,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
 
         console.log("[CONTENT] Total highlights applied:", total);
+        refreshHighlightNavigator();
 
         sendResponse({
           status: "ok",
@@ -61,5 +69,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     );
 
     return true;
+  }
+});
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "next_highlight") {
+    nextHighlight();
+    sendResponse({ status: "ok" });
+    return;
+  }
+
+  if (request.action === "previous_highlight") {
+    previousHighlight();
+    sendResponse({ status: "ok" });
+    return;
   }
 });

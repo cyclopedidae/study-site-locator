@@ -1,3 +1,6 @@
+let highlightNodes = [];
+let activeIndex = -1;
+
 export function highlightEntitiesInElement(element, entities) {
   if (!element || !Array.isArray(entities) || entities.length === 0) return 0;
 
@@ -23,6 +26,9 @@ export function clearHighlights() {
     parent.replaceChild(document.createTextNode(mark.textContent), mark);
     parent.normalize();
   }
+
+  highlightNodes = [];
+  activeIndex = -1;
 }
 
 function highlightPhraseWithinRoot(root, phrase) {
@@ -110,14 +116,60 @@ function ensureHighlightStyle() {
 
   const style = document.createElement('style');
   style.id = 'ner-highlight-style';
-  style.textContent = `
-    mark.ner-highlight {
-      background: #ffeb3b;
-      color: inherit;
-      padding: 0 1px;
-      border-radius: 2px;
-    }
-  `;
+style.textContent = `
+  mark.ner-highlight {
+    background: #ffeb3b;
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
+  }
+
+  mark.ner-highlight-active {
+    background: #ff9800;
+    outline: 2px solid #e65100;
+  }
+`;
 
   document.head.appendChild(style);
+}
+
+export function refreshHighlightNavigator() {
+  highlightNodes = Array.from(document.querySelectorAll('mark.ner-highlight'));
+  activeIndex = highlightNodes.length ? 0 : -1;
+  updateActiveHighlight();
+}
+
+export function nextHighlight() {
+  if (highlightNodes.length === 0) return;
+  activeIndex = (activeIndex + 1) % highlightNodes.length;
+  updateActiveHighlight();
+}
+
+export function previousHighlight() {
+  if (highlightNodes.length === 0) return;
+  activeIndex = (activeIndex - 1 + highlightNodes.length) % highlightNodes.length;
+  updateActiveHighlight();
+}
+
+export function getHighlightCount() {
+  return highlightNodes.length;
+}
+
+export function getActiveHighlightIndex() {
+  return activeIndex;
+}
+
+function updateActiveHighlight() {
+  for (let i = 0; i < highlightNodes.length; i++) {
+    highlightNodes[i].classList.toggle('ner-highlight-active', i === activeIndex);
+  }
+
+  const active = highlightNodes[activeIndex];
+  if (!active) return;
+
+  active.scrollIntoView({
+    behavior: 'smooth',
+    block: 'center',
+    inline: 'nearest'
+  });
 }
