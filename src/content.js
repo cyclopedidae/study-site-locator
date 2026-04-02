@@ -6,7 +6,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const candidates = getCandidateRecords();
     const texts = candidates.map(c => c.text);
 
-    console.log("[CONTENT] Candidate records:", candidates);
     console.log("[CONTENT] Candidate texts sent to NER:", texts);
 
     chrome.runtime.sendMessage(

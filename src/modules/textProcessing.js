@@ -15,7 +15,9 @@ const NOISE_SELECTORS = [
 
   // PMC / PubMed
   '.usa-link', '.tbl-box p', '.ack1', '.ack',
-  '.funding-statement1', '.ref-list1', '.ref-list'
+  '.funding-statement1', '.ref-list1', '.ref-list',
+
+  // Taylor and Francis Online (tandfonline)
 ];
 
 export function getPortionedChunks(body) {
@@ -198,8 +200,10 @@ export function getCandidateRecords() {
     }))
     .filter(record => record.text);
 
-  records = mergeHeadingRecords(records);
   records = cutRecordsAfterTerminalSections(records);
+  records = prioritizeMethodsSection(records);   // detect sections on raw headings
+  records = mergeHeadingRecords(records);        // merge afterward
+  records = removeHeadingOnlyRecords(records);   // drop leftover standalone headings
 
   return records
     .map((record, index) => ({
@@ -208,6 +212,113 @@ export function getCandidateRecords() {
       text: record.text
     }))
     .filter(record => scoreBlockForNER(record.text) >= 2);
+}
+
+function prioritizeMethodsSection(records) {
+  const methodHeaders = [
+    'methods',
+    'materials and methods',
+    'patients and methods',
+    'methodology',
+    'experimental procedures',
+    'study design',
+    'research design',
+    'subjects and methods'
+  ];
+
+  const terminalHeaders = [
+    'results',
+    'discussion',
+    'conclusion',
+    'conclusions',
+    'references',
+    'acknowledgements',
+    'funding',
+    'data availability',
+    'supplementary material',
+    'keywords',
+    'citation',
+    'copyright'
+  ];
+
+  let methodsStart = -1;
+  let methodsEnd = records.length;
+
+  for (let i = 0; i < records.length; i++) {
+    const text = normalizeHeading(records[i]?.text);
+
+    if (methodsStart === -1 && methodHeaders.includes(text)) {
+      methodsStart = i;
+      continue;
+    }
+
+    if (methodsStart !== -1 && terminalHeaders.includes(text)) {
+      methodsEnd = i;
+      break;
+    }
+  }
+
+  if (methodsStart === -1) {
+    console.log("[TEXT] No Methods section found");
+    return records;
+  }
+
+  const methodsRecords = records.slice(methodsStart, methodsEnd);
+  const beforeMethods = records.slice(0, methodsStart);
+  const afterMethods = records.slice(methodsEnd);
+
+  console.log("[TEXT] Methods section prioritized:", {
+    methodsStart,
+    methodsEnd,
+    methodsCount: methodsRecords.length
+  });
+
+  return [...methodsRecords, ...beforeMethods, ...afterMethods];
+}
+
+function removeHeadingOnlyRecords(records) {
+  return records.filter(record => !isHeadingOnlyRecord(record.text));
+}
+
+function isHeadingOnlyRecord(text) {
+  const t = normalizeHeading(text);
+  if (!t) return true;
+
+  const headings = new Set([
+    'abstract',
+    'introduction',
+    'background',
+    'methods',
+    'materials and methods',
+    'patients and methods',
+    'methodology',
+    'experimental procedures',
+    'study design',
+    'research design',
+    'subjects and methods',
+    'results',
+    'discussion',
+    'conclusion',
+    'conclusions',
+    'references',
+    'acknowledgements',
+    'funding',
+    'data availability',
+    'supplementary material',
+    'keywords',
+    'citation',
+    'copyright'
+  ]);
+
+  return headings.has(t);
+}
+
+function normalizeHeading(text) {
+  return (text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[.:]+$/g, '')
+    .replace(/\s+/g, ' ');
 }
 
 function getBestArticleRoot() {
