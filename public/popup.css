@@ -1,41 +1,58 @@
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 60px;
-  height: 34px;
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 180px;
+  height: 60px;
+  background: #c3c3c3;
 }
 
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
+#popup-root {
+  box-sizing: border-box;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  border: 5px solid #777070;
 }
 
-.slider {
-  position: absolute;
+#title {
+  font-size: 16px;
+  text-align: center;
+  padding: 0px;
+  color: #504c4c
+}
+
+#nav-buttons {
+  display: flex;
+  flex-direction: row;
+  gap: 15px;
+}
+
+#run-manual {
+  background-color: #6b6565;
+  color: #d1d0d0;
+  padding: 5px 35px;
+  border: none;
+  border-radius: 5px;
   cursor: pointer;
-  inset: 0;
-  background-color: #ccc;
-  transition: 0.3s;
-  border-radius: 34px;
 }
 
-.slider::before {
-  content: "";
-  position: absolute;
-  height: 26px;
-  width: 26px;
-  left: 4px;
-  bottom: 4px;
-  background-color: white;
-  transition: 0.3s;
-  border-radius: 50%;
+#prev-highlight, 
+#next-highlight {
+  color: #6b6565;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0px;
+  font-size: 20px;
 }
 
-.switch input:checked + .slider {
-  background-color: #2196F3;
+#run-manual:hover {
+  background-color: #777070;
 }
 
-.switch input:checked + .slider::before {
-  transform: translateX(26px);
+#prev-highlight:hover,
+#next-highlight:hover {
+  color: #777070;
 }

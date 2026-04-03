@@ -1,14 +1,18 @@
 <!DOCTYPE html>
 <html>
-  <body>
-    <button id="run-manual">Run</button>
-    <button id="prev-highlight">Previous</button>
-    <button id="next-highlight">Next</button>
+<head>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="popup-root">
+      <h1 id="title">SSL Location Finder</h1>
+    <button id="run-manual">find locations</button>
+      <div id="nav-buttons">
+        <button id="prev-highlight" aria-label="Previous">&#9664;</button>
+        <button id="next-highlight" aria-label="Next">&#9654;</button>
+      </div>
+  </div>
 
-    <label class="switch">
-      <input type="checkbox" id="toggle-extension">
-      <span class="slider"></span>
-    </label>
-    <script src="popup.js"></script>
-  </body>
+  <script src="popup.js"></script>
+</body>
 </html>
