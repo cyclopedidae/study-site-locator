@@ -39,8 +39,6 @@ function highlightPhraseWithinRoot(root, phrase) {
   const escaped = escapeRegex(phrase.trim());
   const regex = new RegExp(`\\b${escaped}\\b`, 'gi');
 
-  console.log(`[HIGHLIGHT] Looking for phrase: "${phrase}"`);
-
   const walker = document.createTreeWalker(
     root,
     NodeFilter.SHOW_TEXT,
@@ -73,8 +71,6 @@ function highlightPhraseWithinRoot(root, phrase) {
     if (!regex.test(text)) continue;
     regex.lastIndex = 0;
 
-    console.log("[HIGHLIGHT] Match found in text node:", text);
-
     const fragment = document.createDocumentFragment();
     let lastIndex = 0;
     let match;
@@ -92,8 +88,6 @@ function highlightPhraseWithinRoot(root, phrase) {
       mark.textContent = text.slice(start, end);
       fragment.appendChild(mark);
 
-      console.log("[HIGHLIGHT] Highlighted:", match[0]);
-
       lastIndex = end;
       count++;
     }
@@ -105,7 +99,6 @@ function highlightPhraseWithinRoot(root, phrase) {
     textNode.parentNode.replaceChild(fragment, textNode);
   }
 
-  console.log(`[HIGHLIGHT] Total matches for "${phrase}":`, count);
   return count;
 }
 
@@ -118,57 +111,132 @@ function ensureHighlightStyle() {
 
   const style = document.createElement('style');
   style.id = 'ner-highlight-style';
-style.textContent = `
-  mark.ner-highlight {
-    background: #ffeb3b;
-    color: inherit;
-    padding: 0 1px;
-    border-radius: 2px;
-  }
+  style.textContent = `
+    mark.ner-highlight {
+      background: #ffeb3b;
+      color: inherit;
+      padding: 0 1px;
+      border-radius: 2px;
+    }
 
-  mark.ner-highlight-active {
-    background: #ff9800;
-    outline: 2px solid #e65100;
-  }
-`;
+    mark.ner-highlight-active {
+      background: #ff9800;
+    }
+  `;
 
   document.head.appendChild(style);
 }
 
+function isVisibleHighlight(node) {
+  if (!node || !node.isConnected) return false;
+
+  const style = window.getComputedStyle(node);
+  if (
+    style.display === 'none' ||
+    style.visibility === 'hidden' ||
+    style.opacity === '0'
+  ) {
+    return false;
+  }
+
+  const rect = node.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+
+  if (!node.textContent || !node.textContent.trim()) return false;
+
+  return true;
+}
+
 export function refreshHighlightNavigator() {
-  highlightNodes = Array.from(document.querySelectorAll('mark.ner-highlight'));
+  const previousActive = activeIndex >= 0 ? highlightNodes[activeIndex] : null;
+
+  highlightNodes = Array.from(document.querySelectorAll('mark.ner-highlight'))
+    .filter(isVisibleHighlight);
+
   highlightNodeSet = new Set(highlightNodes);
-  activeIndex = highlightNodes.length ? 0 : -1;
-  updateActiveHighlight();
+
+  if (highlightNodes.length === 0) {
+    activeIndex = -1;
+    return;
+  }
+
+  if (previousActive) {
+    const sameIndex = highlightNodes.indexOf(previousActive);
+    if (sameIndex >= 0) {
+      activeIndex = sameIndex;
+      updateActiveHighlight(false);
+      return;
+    }
+  }
+
+  if (activeIndex < 0 || activeIndex >= highlightNodes.length) {
+    activeIndex = 0;
+  }
+
+  updateActiveHighlight(false);
+}
+
+export function setActiveHighlightToFirstInElement(element) {
+  if (!element) return false;
+
+  refreshVisibleState();
+
+  const candidates = Array.from(
+    element.querySelectorAll('mark.ner-highlight')
+  ).filter(isVisibleHighlight);
+
+  if (candidates.length === 0) return false;
+
+  const target = candidates[0];
+  const index = highlightNodes.indexOf(target);
+
+  if (index === -1) return false;
+
+  activeIndex = index;
+  updateActiveHighlight(true);
+  return true;
 }
 
 export function nextHighlight() {
+  refreshVisibleState();
   if (highlightNodes.length === 0) return;
+
   activeIndex = (activeIndex + 1) % highlightNodes.length;
-  updateActiveHighlight();
+  updateActiveHighlight(true);
 }
 
 export function previousHighlight() {
+  refreshVisibleState();
   if (highlightNodes.length === 0) return;
+
   activeIndex = (activeIndex - 1 + highlightNodes.length) % highlightNodes.length;
-  updateActiveHighlight();
+  updateActiveHighlight(true);
 }
 
-export function getHighlightCount() {
-  return highlightNodes.length;
+function refreshVisibleState() {
+  const previousActive = highlightNodes[activeIndex] || null;
+
+  highlightNodes = highlightNodes.filter(isVisibleHighlight);
+  highlightNodeSet = new Set(highlightNodes);
+
+  if (highlightNodes.length === 0) {
+    activeIndex = -1;
+    return;
+  }
+
+  const sameIndex = previousActive ? highlightNodes.indexOf(previousActive) : -1;
+  activeIndex = sameIndex >= 0 ? sameIndex : Math.min(Math.max(activeIndex, 0), highlightNodes.length - 1);
 }
 
-export function getActiveHighlightIndex() {
-  return activeIndex;
-}
-
-function updateActiveHighlight() {
+function updateActiveHighlight(shouldScroll = true) {
   for (let i = 0; i < highlightNodes.length; i++) {
     highlightNodes[i].classList.toggle('ner-highlight-active', i === activeIndex);
   }
 
+  if (!shouldScroll) return;
+
   const active = highlightNodes[activeIndex];
-  if (!active) return;
+  if (!active || !isVisibleHighlight(active)) return;
 
   active.scrollIntoView({
     behavior: 'smooth',
@@ -180,7 +248,9 @@ function updateActiveHighlight() {
 export function registerHighlightsInElement(element) {
   if (!element) return 0;
 
-  const found = element.querySelectorAll('mark.ner-highlight');
+  const found = Array.from(element.querySelectorAll('mark.ner-highlight'))
+    .filter(isVisibleHighlight);
+
   let added = 0;
 
   for (const node of found) {
@@ -192,7 +262,7 @@ export function registerHighlightsInElement(element) {
 
   if (activeIndex === -1 && highlightNodes.length > 0) {
     activeIndex = 0;
-    updateActiveHighlight();
+    updateActiveHighlight(false);
   }
 
   return added;

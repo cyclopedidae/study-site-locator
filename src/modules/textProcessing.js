@@ -20,6 +20,49 @@ const NOISE_SELECTORS = [
   // Taylor and Francis Online (tandfonline)
 ];
 
+  const SELECTORS = [
+    'article',
+    'main',
+    '[role="main"]',
+    '.article-body',
+    '.article-content',
+    '.main-content',
+    '.post-content',
+    '.entry-content',
+    '.full-text',
+    '.html-body',
+    'conflict-of-interest',
+    'body main-article-body',
+    'ArticleContent',
+    'article-container'
+  ];
+
+  const METHOD_HEADERS = [
+    'methods',
+    'materials and methods',
+    'patients and methods',
+    'methodology',
+    'experimental procedures',
+    'study design',
+    'research design',
+    'subjects and methods'
+  ];
+
+  const TERMINAL_HEADERS = [
+    'results',
+    'discussion',
+    'conclusion',
+    'conclusions',
+    'references',
+    'acknowledgements',
+    'funding',
+    'data availability',
+    'supplementary material',
+    'keywords',
+    'citation',
+    'copyright'
+  ];
+
 export function getPortionedChunks(body) {
     const chunks = chunkify(body);
     const portions = [];
@@ -215,52 +258,46 @@ export function getCandidateRecords() {
 }
 
 function prioritizeMethodsSection(records) {
-  const methodHeaders = [
-    'methods',
-    'materials and methods',
-    'patients and methods',
-    'methodology',
-    'experimental procedures',
-    'study design',
-    'research design',
-    'subjects and methods'
-  ];
-
-  const terminalHeaders = [
-    'results',
-    'discussion',
-    'conclusion',
-    'conclusions',
-    'references',
-    'acknowledgements',
-    'funding',
-    'data availability',
-    'supplementary material',
-    'keywords',
-    'citation',
-    'copyright'
-  ];
-
   let methodsStart = -1;
   let methodsEnd = records.length;
 
-  for (let i = 0; i < records.length; i++) {
-    const text = normalizeHeading(records[i]?.text);
+  const headingPriority = ['h2', 'h3', 'h4'];
 
-    if (methodsStart === -1 && methodHeaders.includes(text)) {
-      methodsStart = i;
-      continue;
-    }
+  const methodCandidates = records
+    .map((record, index) => ({
+      index,
+      text: normalizeHeading(record?.text),
+      tag: record?.element?.tagName?.toLowerCase() || ''
+    }))
+    .filter(record =>
+      METHOD_HEADERS.includes(record.text) &&
+      headingPriority.includes(record.tag)
+    );
 
-    if (methodsStart !== -1 && terminalHeaders.includes(text)) {
-      methodsEnd = i;
+  if (methodCandidates.length === 0) {
+    console.log("[TEXT] No Methods section found");
+    return records;
+  }
+
+  let chosenLevel = null;
+  for (const level of headingPriority) {
+    if (methodCandidates.some(record => record.tag === level)) {
+      chosenLevel = level;
       break;
     }
   }
 
-  if (methodsStart === -1) {
-    console.log("[TEXT] No Methods section found");
-    return records;
+  const chosenMethod = methodCandidates.find(record => record.tag === chosenLevel);
+  methodsStart = chosenMethod.index;
+
+  for (let i = methodsStart + 1; i < records.length; i++) {
+    const text = normalizeHeading(records[i]?.text);
+    const tag = records[i]?.element?.tagName?.toLowerCase() || '';
+
+    if (tag === chosenLevel && TERMINAL_HEADERS.includes(text)) {
+      methodsEnd = i;
+      break;
+    }
   }
 
   const methodsRecords = records.slice(methodsStart, methodsEnd);
@@ -268,6 +305,7 @@ function prioritizeMethodsSection(records) {
   const afterMethods = records.slice(methodsEnd);
 
   console.log("[TEXT] Methods section prioritized:", {
+    chosenLevel,
     methodsStart,
     methodsEnd,
     methodsCount: methodsRecords.length
@@ -284,6 +322,7 @@ function isHeadingOnlyRecord(text) {
   const t = normalizeHeading(text);
   if (!t) return true;
 
+  // Remove if alone
   const headings = new Set([
     'abstract',
     'introduction',
@@ -322,25 +361,8 @@ function normalizeHeading(text) {
 }
 
 function getBestArticleRoot() {
-  const selectors = [
-    'article',
-    'main',
-    '[role="main"]',
-    '.article-body',
-    '.article-content',
-    '.main-content',
-    '.post-content',
-    '.entry-content',
-    '.full-text',
-    '.html-body',
-    'conflict-of-interest',
-    'body main-article-body',
-    'ArticleContent',
-    'article-container'
-  ];
-
   const candidates = [...new Set(
-    selectors.flatMap(sel => [...document.querySelectorAll(sel)])
+    SELECTORS.flatMap(sel => [...document.querySelectorAll(sel)])
   )];
 
   if (candidates.length === 0) {

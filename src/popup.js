@@ -1,15 +1,37 @@
 const buttonManRun = document.getElementById("run-manual");
 const buttonPrev = document.getElementById("prev-highlight");
 const buttonNext = document.getElementById("next-highlight");
-const extensionToggle = document.getElementById("toggle-extension");
 
 const params = { active: true, currentWindow: true };
-const storage = chrome.storage.local;
+
+let statusPoller = null;
+let isRunLocked = false;
+const defaultRunLabel = buttonManRun.textContent || "Find Location";
 
 // ----- LISTENERS -----
 buttonManRun.addEventListener("click", () => {
+  if (isRunLocked) return;
+
   chrome.tabs.query(params, (tabs) => {
-    extractText(tabs);
+    const tab = tabs?.[0];
+    if (!tab?.id) return;
+
+    lockRunButton();
+
+    chrome.tabs.sendMessage(
+      tab.id,
+      { action: "extract_text" },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Popup sendMessage error:", chrome.runtime.lastError.message);
+          unlockRunButton();
+          return;
+        }
+
+        console.log("Popup got:", response);
+        startStatusPolling(tab.id);
+      }
+    );
   });
 });
 
@@ -25,31 +47,48 @@ buttonNext.addEventListener("click", () => {
   });
 });
 
-extensionToggle.addEventListener("change", async (event) => {
-  const enabled = event.target.checked;
-  await storage.set({ autoExtractEnabled: enabled });
-});
-
-document.addEventListener("DOMContentLoaded", async () => {
-  const { autoExtractEnabled = false } =
-    await storage.get("autoExtractEnabled");
-
-  extensionToggle.checked = autoExtractEnabled;
-});
-
 // ----- HELPER FUNCTIONS -----
-function extractText(tabs) {
-  chrome.tabs.sendMessage(
-    tabs[0].id,
-    { action: "extract_text" },
-    (response) => {
-      if (chrome.runtime.lastError) {
-        console.error("Popup sendMessage error:", chrome.runtime.lastError.message);
-        return;
+function lockRunButton() {
+  isRunLocked = true;
+  buttonManRun.disabled = true;
+  buttonManRun.textContent = "Running...";
+}
+
+function unlockRunButton() {
+  isRunLocked = false;
+  buttonManRun.disabled = false;
+  buttonManRun.textContent = defaultRunLabel;
+}
+
+function startStatusPolling(tabId) {
+  stopStatusPolling();
+
+  statusPoller = setInterval(() => {
+    chrome.tabs.sendMessage(
+      tabId,
+      { action: "get_extraction_status" },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Popup status poll error:", chrome.runtime.lastError.message);
+          stopStatusPolling();
+          unlockRunButton();
+          return;
+        }
+
+        if (!response?.running) {
+          stopStatusPolling();
+          unlockRunButton();
+        }
       }
-      console.log("Popup got:", response);
-    }
-  );
+    );
+  }, 500);
+}
+
+function stopStatusPolling() {
+  if (statusPoller) {
+    clearInterval(statusPoller);
+    statusPoller = null;
+  }
 }
 
 function sendNavCommand(tabs, action) {

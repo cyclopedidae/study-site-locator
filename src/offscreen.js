@@ -7,6 +7,11 @@ env.allowLocalModels = true;
 env.allowRemoteModels = false;
 env.localModelPath = chrome.runtime.getURL('models/');
 
+  const ALLOWED_MISC_WORDS = new Set([
+    'UK', 'US', 'USA', 'UAE', 'EU'
+  ]);
+
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "run_ner") {
     (async () => {
@@ -26,11 +31,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const result = await runNER(blockText);
           console.log("[OFFSCREEN] Raw NER result:", result);
 
-          const rawRelevant = result.filter(ent =>
-            ent.entity.endsWith('LOC')
-          );
-
-          console.log("[OFFSCREEN] Raw relevant LOC (ORG removed):", rawRelevant);
+          const rawRelevant = result.filter(isRelevantRawEntity);
+          console.log("[OFFSCREEN] Raw relevant LOC + selected MISC:", rawRelevant);
 
           const mergedRelevant = mergeEntities(rawRelevant);
           console.log("[OFFSCREEN] Merged relevant:", mergedRelevant);
@@ -98,6 +100,29 @@ async function getNER() {
 
 // ----- HELPERS -----
 
+function isRelevantRawEntity(ent) {
+  const label = ent.entity || '';
+  const word = cleanToken(ent.word || '');
+
+  if (label.endsWith('LOC')) return true;
+
+  if (label.endsWith('MISC') && isLocationLikeMisc(word)) {
+    return true;
+  }
+
+  return false;
+}
+
+function isLocationLikeMisc(word) {
+  if (!word) return false;
+
+  const w = word.trim();
+
+  if (ALLOWED_MISC_WORDS.has(w)) return true;
+
+  return false;
+}
+
 function isUsefulEntity(ent) {
   const badWords = new Set([
     'for', 'and', 'of', 'the', 'in', 'on', 'at', 'by', 'to', 'from',
@@ -109,7 +134,10 @@ function isUsefulEntity(ent) {
   const text = (ent.text || '').trim();
 
   if (!text) return false;
-  if (text.length < 3) return false;
+
+  // Keep short geo abbreviations like UK / US / EU
+  if (text.length < 3 && !isLocationLikeMisc(text)) return false;
+
   if (badWords.has(text.toLowerCase())) return false;
 
   return true;

@@ -1,7 +1,8 @@
 import {
   highlightEntitiesInElement,
   clearHighlights,
-  registerHighlightsInElement,
+  refreshHighlightNavigator,
+  setActiveHighlightToFirstInElement,
   nextHighlight,
   previousHighlight
 } from './modules/highlight.js';
@@ -67,14 +68,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log("[CONTENT] Entities to highlight:", entityTexts);
 
     const count = highlightEntitiesInElement(candidate.element, entityTexts);
+    const wasFirstSuccessfulBatch = totalHighlights === 0 && count > 0;
     totalHighlights += count;
 
     console.log(`[CONTENT] Incrementally highlighted ${count} occurrence(s) in block ${match.index}`);
     console.log("[CONTENT] Running total highlights:", totalHighlights);
 
-    // Only register the new marks from this element.
-    registerHighlightsInElement(candidate.element);
+    refreshHighlightNavigator();
 
+    if (wasFirstSuccessfulBatch) {
+      setActiveHighlightToFirstInElement(candidate.element);
+    }    
+    
     sendResponse({
       status: "ok",
       highlighted: count,
@@ -100,4 +105,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return;
   }
+
+  if (request.action === "get_extraction_status") {
+    sendResponse({
+      status: "ok",
+      running: isExtractionRunning
+  });
+    return;
+  }
+
 });
