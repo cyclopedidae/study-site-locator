@@ -1,4 +1,5 @@
 let highlightNodes = [];
+let highlightNodeSet = new Set();
 let activeIndex = -1;
 
 export function highlightEntitiesInElement(element, entities) {
@@ -28,6 +29,7 @@ export function clearHighlights() {
   }
 
   highlightNodes = [];
+  highlightNodeSet = new Set();
   activeIndex = -1;
 }
 
@@ -135,6 +137,7 @@ style.textContent = `
 
 export function refreshHighlightNavigator() {
   highlightNodes = Array.from(document.querySelectorAll('mark.ner-highlight'));
+  highlightNodeSet = new Set(highlightNodes);
   activeIndex = highlightNodes.length ? 0 : -1;
   updateActiveHighlight();
 }
@@ -172,4 +175,25 @@ function updateActiveHighlight() {
     block: 'center',
     inline: 'nearest'
   });
+}
+
+export function registerHighlightsInElement(element) {
+  if (!element) return 0;
+
+  const found = element.querySelectorAll('mark.ner-highlight');
+  let added = 0;
+
+  for (const node of found) {
+    if (highlightNodeSet.has(node)) continue;
+    highlightNodes.push(node);
+    highlightNodeSet.add(node);
+    added++;
+  }
+
+  if (activeIndex === -1 && highlightNodes.length > 0) {
+    activeIndex = 0;
+    updateActiveHighlight();
+  }
+
+  return added;
 }

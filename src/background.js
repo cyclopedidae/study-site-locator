@@ -15,14 +15,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         const result = await chrome.runtime.sendMessage({
           action: 'run_ner',
-          data: request.data
+          data: request.data,
+          tabId: sender.tab?.id ?? null
         });
 
-        console.log("[BACKGROUND] NER result from offscreen:", result);
+        console.log("[BACKGROUND] Final NER result from offscreen:", result);
 
         sendResponse({ status: "ok", data: result });
       } catch (err) {
         console.error("[BACKGROUND] Call to NER failed:", err);
+        sendResponse({ status: "error", message: err.message });
+      }
+    })();
+
+    return true;
+  }
+
+  if (request.action === "stream_ner_match") {
+    (async () => {
+      try {
+        const tabId = request.tabId;
+
+        if (typeof tabId !== "number") {
+          console.warn("[BACKGROUND] Missing tabId for streamed match:", request);
+          sendResponse({ status: "missing_tabId" });
+          return;
+        }
+
+        await chrome.tabs.sendMessage(tabId, {
+          action: "ner_match_found",
+          match: request.match
+        });
+
+        sendResponse({ status: "ok" });
+      } catch (err) {
+        console.error("[BACKGROUND] Failed to relay streamed match:", err);
         sendResponse({ status: "error", message: err.message });
       }
     })();
@@ -59,7 +86,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 async function setupOffscreenDocument(path) {
   const offscreenUrl = chrome.runtime.getURL(path);
-  const existingContexts = await chrome.runtime.getContexts({ 
+  const existingContexts = await chrome.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT'],
     documentUrls: [offscreenUrl]
   });

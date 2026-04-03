@@ -15,6 +15,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.log("[OFFSCREEN] Total candidate blocks:", request.data.length);
 
         const matches = [];
+        const tabId = request.tabId;
 
         for (let i = 0; i < request.data.length; i++) {
           const blockText = request.data[i];
@@ -25,18 +26,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const result = await runNER(blockText);
           console.log("[OFFSCREEN] Raw NER result:", result);
 
-          // Filter for relevant entity types
           const rawRelevant = result.filter(ent =>
-            ent.entity.endsWith('LOC') || ent.entity.endsWith('ORG')
+            ent.entity.endsWith('LOC')
           );
 
-          console.log("[OFFSCREEN] Raw relevant LOC/ORG:", rawRelevant);
+          console.log("[OFFSCREEN] Raw relevant LOC (ORG removed):", rawRelevant);
 
-          // Merge subword tokens into full entities
           const mergedRelevant = mergeEntities(rawRelevant);
           console.log("[OFFSCREEN] Merged relevant:", mergedRelevant);
 
-          // Filter out useless words
           const useful = mergedRelevant.filter(isUsefulEntity);
           console.log("[OFFSCREEN] Useful entities:", useful);
 
@@ -45,9 +43,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
             console.log("[OFFSCREEN] Final deduped entity texts:", deduped);
 
-            matches.push({
+            const match = {
               index: i,
               entities: deduped
+            };
+
+            matches.push(match);
+
+            await chrome.runtime.sendMessage({
+              action: "stream_ner_match",
+              tabId,
+              match
             });
           } else {
             console.log("[OFFSCREEN] No useful entities in this block");
