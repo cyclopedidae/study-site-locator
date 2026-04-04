@@ -16,52 +16,66 @@ const NOISE_SELECTORS = [
   // PMC / PubMed
   '.usa-link', '.tbl-box p', '.ack1', '.ack',
   '.funding-statement1', '.ref-list1', '.ref-list',
-
-  // Taylor and Francis Online (tandfonline)
 ];
 
-  const SELECTORS = [
-    'article',
-    'main',
-    '[role="main"]',
-    '.article-body',
-    '.article-content',
-    '.main-content',
-    '.post-content',
-    '.entry-content',
-    '.full-text',
-    '.html-body',
-    'conflict-of-interest',
-    'body main-article-body',
-    'ArticleContent',
-    'article-container'
-  ];
+const SELECTORS = [
+  '#bodymatter', // Sage
+  '#body', // ScienceDirect
+  '.article-body',
+  '.article-content',
+  '.main-content',
+  '.post-content',
+  '.entry-content',
+  '.full-text',
+  '.html-body',
+  'conflict-of-interest',
+  'ArticleContent',
+  'article-container',
+  '.articleBody'
+];
 
-  const METHOD_HEADERS = [
-    'methods',
-    'materials and methods',
-    'patients and methods',
-    'methodology',
-    'experimental procedures',
-    'study design',
-    'research design',
-    'subjects and methods'
-  ];
+const METHOD_HEADERS = [
+  'methods',
+  'method',
+  '2 methods', // Wiley
+  '2. method', // ScienceDirect
+  'materials and methods',
+  'patients and methods',
+  'methodology',
+  'experimental procedures',
+  'study design',
+  'research design',
+  'subjects and methods',
+  'materials methods'
+];
 
-  const TERMINAL_HEADERS = [
-    'results',
-    'discussion',
-    'conclusion',
-    'conclusions',
-    'references',
-    'acknowledgements',
-    'funding',
-    'data availability',
-    'supplementary material',
-    'keywords',
-    'citation',
-    'copyright'
-  ];
+const TERMINAL_HEADERS = [
+  'results',
+  'discussion',
+  'conclusion',
+  'conclusions',
+  'limitations',
+  'references',
+  'acknowledgements',
+  'funding',
+  'data availability',
+  'supplementary material',
+  'citation',
+  'copyright',
+  'keywords'
+];
+
+const STOP_HEADERS = new Set([
+  'references',
+  'citations',
+  'acknowledgements',
+  'data availability',
+  'supplementary material',
+  'citation',
+  'copyright',
+  'supporting information',
+  'author contributions'
+]);
 
 export function getPortionedChunks(body) {
     const chunks = chunkify(body);
@@ -234,27 +248,50 @@ function countCharacter(str, char) {
 
 export function getCandidateRecords() {
   const best = getBestArticleRoot();
+  console.log("[TEXT] root:", best);
 
-  let records = [...best.querySelectorAll('h2, h3, h4, p, figcaption')]
+  let records = [...best.querySelectorAll('h2, h3, h4, p, figcaption, div[role="paragraph"], [id^="para"]')]
     .filter(el => !isInNoise(el))
     .map(el => ({
+      tag: el.tagName,
+      role: el.getAttribute("role"),
       element: el,
       text: cleanBlock(el.innerText || '')
     }))
     .filter(record => record.text);
 
-  records = cutRecordsAfterTerminalSections(records);
-  records = prioritizeMethodsSection(records);   // detect sections on raw headings
-  records = mergeHeadingRecords(records);        // merge afterward
-  records = removeHeadingOnlyRecords(records);   // drop leftover standalone headings
+  console.log("[TEXT] raw records count:", records.length);
+  console.log("[TEXT] raw records sample:", records.slice(0, 10).map(r => ({
+    tag: r.tag,
+    role: r.role,
+    text: r.text
+  })));
 
-  return records
-    .map((record, index) => ({
-      index,
-      element: record.element,
-      text: record.text
-    }))
-    .filter(record => scoreBlockForNER(record.text) >= 2);
+  records = cutRecordsAfterTerminalSections(records);
+  console.log("[TEXT] after terminal cut:", records.length);
+
+  records = prioritizeMethodsSection(records);
+  console.log("[TEXT] after methods prioritize:", records.length);
+
+  records = mergeHeadingRecords(records);
+  console.log("[TEXT] after merge:", records.length);
+
+  records = removeHeadingOnlyRecords(records);
+  console.log("[TEXT] after heading removal:", records.length);
+
+  const scored = records.map((record, index) => ({
+    index,
+    element: record.element,
+    text: record.text,
+    score: scoreBlockForNER(record.text)
+  }));
+
+  console.log("[TEXT] scored records:", scored.map(r => ({
+    score: r.score,
+    text: r.text
+  })));
+
+  return scored.filter(record => record.score >= 2);
 }
 
 function prioritizeMethodsSection(records) {
@@ -381,29 +418,13 @@ function getBestArticleRoot() {
 }
 
 function cutRecordsAfterTerminalSections(records) {
-  const stopHeaders = new Set([
-    'references',
-    'citations',
-    'acknowledgements',
-    'funding',
-    'conflict of interest',
-    'data availability',
-    'supplementary material',
-    'keywords',
-    'citation',
-    'copyright',
-    'supporting information',
-    'Statement__Conflictofinterest',
-    'References'
-  ]);
-
   const out = [];
 
   for (const record of records) {
     if (!record?.text) continue;
 
     const lowered = record.text.trim().toLowerCase();
-    if (stopHeaders.has(lowered)) {
+    if (STOP_HEADERS.has(lowered)) {
       console.log("[TEXT] Stopping at terminal section:", record.text);
       break;
     }
@@ -457,9 +478,8 @@ function isLikelyHeading(text) {
 function scoreBlockForNER(block) {
     let score = 0;
 
-    if (/\b(university|institute|laboratory|lab)\b/i.test(block)) score += 3;
-    if (/\b(hospital|province)\b/i.test(block)) score += 4;
-    if (/\b(department of|school of|faculty of)\b/i.test(block)) score += 3;
+    if (/\b(university|institute|laboratory|lab|medical center|department of|school of|faculty of|review board|subjects)\b/i.test(block)) score += 3;
+    if (/\b(hospital|province)\b/i.test(block)) score += 5;
     if (/\b(canada|usa|united states|uk|france|germany|china|japan|australia|sweden)\b/i.test(block)) score += 2;
     if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}/.test(block)) score += 1;
     if (block.length < 40) score -= 2;
@@ -467,7 +487,7 @@ function scoreBlockForNER(block) {
     if (/\b(references|acknowledgements|supplementary)\b/i.test(block)) score -= 5;
 
     return score;
-}
+  }
 
 export function generateCandidates(blocks, minScore = 2) {
     return blocks.filter(block => scoreBlockForNER(block) >= minScore);

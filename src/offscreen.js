@@ -7,10 +7,9 @@ env.allowLocalModels = true;
 env.allowRemoteModels = false;
 env.localModelPath = chrome.runtime.getURL('models/');
 
-  const ALLOWED_MISC_WORDS = new Set([
-    'UK', 'US', 'USA', 'UAE', 'EU'
-  ]);
-
+const ALLOWED_MISC_WORDS = new Set([
+  'UK', 'US', 'USA', 'UAE', 'EU', 'Dutch'
+]);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "run_ner") {
