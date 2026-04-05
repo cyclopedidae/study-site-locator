@@ -17,12 +17,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         console.log("[OFFSCREEN] ===== NER RUN START =====");
         console.log("[OFFSCREEN] Total candidate blocks:", request.data.length);
-        const startTime = Date.now();        
 
         const matches = [];
         const tabId = request.tabId;
 
         for (let i = 0; i < request.data.length; i++) {
+          const startTime = Date.now();        
           const blockText = request.data[i];
 
           console.log(`\n[OFFSCREEN] --- Block ${i} ---`);
@@ -60,6 +60,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           } else {
             console.log("[OFFSCREEN] No useful entities in this block");
           }
+          console.log("[OFFSCREEN] ===== ELAPSED TIME =====\n")
+          console.log("[OFFSCREEN] ", elapsedTime / 1000, "seconds")
         }
 
         console.log("\n[OFFSCREEN] ===== NER RUN END =====");
@@ -71,8 +73,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
 
         const elapsedTime = Date.now() - startTime;
-        console.log("[OFFSCREEN] ===== ELAPSED TIME =====\n")
-        console.log("[OFFSCREEN] ", elapsedTime / 1000, "seconds")
       } catch (error) {
         console.error("[OFFSCREEN] NER ERROR:", error);
         sendResponse({
