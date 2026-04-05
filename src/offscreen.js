@@ -4,7 +4,7 @@ let nerPipeline = null;
 
 env.backends.onnx.wasm.numThreads = 1;
 env.allowLocalModels = true;
-env.allowRemoteModels = false;
+env.allowRemoteModels = true;
 env.localModelPath = chrome.runtime.getURL('models/');
 
 const ALLOWED_MISC_WORDS = new Set([
@@ -17,6 +17,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         console.log("[OFFSCREEN] ===== NER RUN START =====");
         console.log("[OFFSCREEN] Total candidate blocks:", request.data.length);
+        const startTime = Date.now();        
 
         const matches = [];
         const tabId = request.tabId;
@@ -68,6 +69,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           status: "ok",
           matches
         });
+
+        const elapsedTime = Date.now() - startTime;
+        console.log("[OFFSCREEN] ===== ELAPSED TIME =====\n")
+        console.log("[OFFSCREEN] ", elapsedTime / 1000, "seconds")
       } catch (error) {
         console.error("[OFFSCREEN] NER ERROR:", error);
         sendResponse({
