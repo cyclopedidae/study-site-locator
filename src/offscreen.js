@@ -60,6 +60,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           } else {
             console.log("[OFFSCREEN] No useful entities in this block");
           }
+          
+          const elapsedTime = Date.now() - startTime;
           console.log("[OFFSCREEN] ==== ELAPSED TIME ====\n")
           console.log("[OFFSCREEN] ", elapsedTime / 1000, "seconds")
         }
@@ -72,7 +74,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           matches
         });
 
-        const elapsedTime = Date.now() - startTime;
       } catch (error) {
         console.error("[OFFSCREEN] NER ERROR:", error);
         sendResponse({
