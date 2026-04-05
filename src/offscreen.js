@@ -60,7 +60,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           } else {
             console.log("[OFFSCREEN] No useful entities in this block");
           }
-          console.log("[OFFSCREEN] ===== ELAPSED TIME =====\n")
+          console.log("[OFFSCREEN] ==== ELAPSED TIME ====\n")
           console.log("[OFFSCREEN] ", elapsedTime / 1000, "seconds")
         }
 
