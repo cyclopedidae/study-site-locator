@@ -486,7 +486,7 @@ function isLikelyHeading(text) {
 function scoreBlockForNER(block) {
     let score = 0;
 
-    if (/\b(university|institute|laboratory|lab|department of|school of|faculty of|subjects|center)\b/i.test(block)) score += 3;
+    if (/\b(|conducted in|conducted at|university|institute|laboratory|lab|department of|school of|faculty of|subjects|center)\b/i.test(block)) score += 3;
     if (/\b(hospital|province|review board|participants)\b/i.test(block)) score += 5;
     //if (/\b(canada|usa|united states|uk|france|germany|china|japan|australia|sweden)\b/i.test(block)) score += 2;
     if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}/.test(block)) score += 1;
