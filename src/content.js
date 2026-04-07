@@ -16,23 +16,27 @@ let isExtractionRunning = false;
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "extract_text") {
     const candidates = getCandidateRecords();
-    const texts = candidates.map(c => c.text);
+    const payload = candidates.map(c => ({
+      text: c.text,
+      inMethods: !!c.inMethods,
+      methodsFound: !!c.methodsFound
+    }));
 
     currentCandidates = candidates;
     totalHighlights = 0;
     isExtractionRunning = true;
     clearHighlights();
 
-    console.log("[CONTENT] Candidate texts sent to NER:", texts);
+    console.log("[CONTENT] Candidate texts sent to NER:", payload);
 
     // Respond immediately so the popup remains responsive.
     sendResponse({
       status: "started",
-      candidateCount: texts.length
+      candidateCount: payload.length
     });
 
     chrome.runtime.sendMessage(
-      { action: "analyze_text", data: texts },
+      { action: "analyze_text", data: payload },
       (response) => {
         isExtractionRunning = false;
 

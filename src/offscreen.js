@@ -1,7 +1,17 @@
 import { runNER } from './modules/ner';
 
 const ALLOWED_MISC_WORDS = new Set([
-  'UK', 'US', 'USA', 'UAE', 'EU', 'Dutch'
+  'UK', 
+  'US', 
+  'USA', 
+  'UAE', 
+  'EU', 
+  'Dutch', 
+  'Review Board', 
+  'University', 
+  "'University's",
+  'Indian',
+  'American'
 ]);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -16,7 +26,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         for (let i = 0; i < request.data.length; i++) {
           const startTime = Date.now();        
-          const blockText = request.data[i];
+          const block = request.data[i];
+          const blockText = block.text;
+          const inMethods = !!block.inMethods;
+          const methodsFound = !!block.methodsFound;
 
           console.log(`\n[OFFSCREEN] --- Block ${i} ---`);
           console.log("[OFFSCREEN] Input text:", blockText);
@@ -24,10 +37,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           const result = await runNER(blockText);
           console.log("[OFFSCREEN] Raw NER result:", result);
 
-          const rawRelevant = result.filter(isRelevantRawEntity);
-          console.log("[OFFSCREEN] Raw relevant LOC + selected MISC:", rawRelevant);
-
-          const mergedRelevant = mergeEntities(rawRelevant);
+          const mergedRelevant = mergeEntities(result, { inMethods, methodsFound });
           console.log("[OFFSCREEN] Merged relevant:", mergedRelevant);
 
           const useful = mergedRelevant.filter(isUsefulEntity);
@@ -82,33 +92,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // ----- HELPERS -----
 
-function isRelevantRawEntity(ent) {
-  const label = ent.entity || '';
-  const word = cleanToken(ent.word || '');
+function isRelevantMergedEntity(ent, context = {}) {
+  const type = ent?.type || '';
+  const text = (ent?.text || '').trim();
+  const score = ent?.score ?? 0;
+  const inMethods = !!context.inMethods;
+  const methodsFound = !!context.methodsFound;
 
-  if (label.endsWith('LOC')) return true;
+  if (!text) return false;
+  if (score <= 0.45) return false;
 
-  if (label.endsWith('MISC') && isLocationLikeMisc(word)) {
+  if (type === 'LOC') return true;
+
+  if (type === 'MISC' && isAllowedWord(text)) {
     return true;
+  }
+
+  if (type === 'ORG') {
+    if (methodsFound && !inMethods) return false;
+    return isRelevantOrganization(text);
   }
 
   return false;
 }
 
-function isLocationLikeMisc(word) {
+function isAllowedWord(word) {
   if (!word) return false;
-
   const w = word.trim();
-
   if (ALLOWED_MISC_WORDS.has(w)) return true;
-
   return false;
 }
 
 function isUsefulEntity(ent) {
   const badWords = new Set([
     'for', 'and', 'of', 'the', 'in', 'on', 'at', 'by', 'to', 'from',
-    'with', 'without', 'clinical', 'study', 'trial', 'data', 'outcome',
+    'with', 'without', 'study', 'data', 'outcome',
     'primary', 'secondary', 'depressive', 'adherence', 'mood', 'weeks',
     'baseline', 'post', 'intervention', 'status', 'support'
   ]);
@@ -118,7 +136,7 @@ function isUsefulEntity(ent) {
   if (!text) return false;
 
   // Keep short geo abbreviations like UK / US / EU
-  if (text.length < 3 && !isLocationLikeMisc(text)) return false;
+  if (text.length < 3 && !isAllowedWord(text)) return false;
 
   if (badWords.has(text.toLowerCase())) return false;
 
@@ -129,44 +147,69 @@ function dedupe(arr) {
   return [...new Set(arr.map(x => x.trim()).filter(Boolean))];
 }
 
-function mergeEntities(tokens) {
+function isRelevantOrganization(text) {
+  return /\b(university|universities|hospital|hospitals|review board|institutional review board|irb|ethics committee|ethics board|institute|institutes|department|faculty|school|schools|college|colleges|center|centre|clinic|clinics|medical center|medical centre)\b/i.test(text);
+}
+
+function mergeEntities(tokens, context = {}) {
   const merged = [];
   let current = null;
 
-  console.log("[OFFSCREEN] mergeEntities input:", tokens);
-
   for (const token of tokens) {
-    const label = token.entity;
-    const word = token.word ?? '';
+    const label = token?.entity || '';
+    const rawWord = token?.word || '';
+    const score = token?.score ?? 0;
 
-    if (!label || !word) continue;
+    if (!label || !rawWord) {
+      if (current) {
+        merged.push(current);
+        current = null;
+      }
+      continue;
+    }
 
-    const isBegin = label.startsWith('B-');
-    const isInside = label.startsWith('I-');
+    const prefix = label.slice(0, 2);
     const type = label.slice(2);
+    const word = cleanToken(rawWord);
 
-    if (!current || isBegin || current.type !== type) {
+    if (!type || label === 'O') {
+      if (current) {
+        merged.push(current);
+        current = null;
+      }
+      continue;
+    }
+
+    if (prefix === 'B-') {
       if (current) merged.push(current);
 
       current = {
+        entity: label,
         type,
-        text: cleanToken(word)
+        text: word,
+        score
       };
       continue;
     }
 
-    if (isInside && current.type === type) {
-      current.text += word.startsWith('##')
-        ? word.slice(2)
-        : ' ' + cleanToken(word);
+    if (prefix === 'I-' && current && current.type === type) {
+      current.text += rawWord.startsWith('##')
+        ? cleanToken(rawWord)
+        : ' ' + word;
+
+      current.score = Math.min(current.score, score);
+      continue;
     }
+
+    if (current) merged.push(current);
+    current = null;
   }
 
   if (current) merged.push(current);
 
   console.log("[OFFSCREEN] mergeEntities output:", merged);
 
-  return merged;
+  return merged.filter(ent => isRelevantMergedEntity(ent, context));
 }
 
 function cleanToken(word) {

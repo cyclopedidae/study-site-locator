@@ -19,8 +19,8 @@ const NOISE_SELECTORS = [
 ];
 
 const SELECTORS = [
-  '#bodymatter', // Sage
-  '#body', // ScienceDirect
+  '#bodymatter', // Sage,
+  '#Article content',
   '.article-body',
   '.article-content',
   '.main-content',
@@ -254,7 +254,6 @@ export function getCandidateRecords() {
     .filter(el => !isInNoise(el))
     .map(el => ({
       tag: el.tagName,
-      role: el.getAttribute("role"),
       element: el,
       text: cleanBlock(el.innerText || '')
     }))
@@ -263,16 +262,17 @@ export function getCandidateRecords() {
   console.log("[TEXT] raw records count:", records.length);
   console.log("[TEXT] raw records sample:", records.slice(0, 10).map(r => ({
     tag: r.tag,
-    role: r.role,
     text: r.text
   })));
 
   records = cutRecordsAfterTerminalSections(records);
   console.log("[TEXT] after terminal cut:", records.length);
 
-  records = prioritizeMethodsSection(records);
-  console.log("[TEXT] after methods prioritize:", records.length);
+  const methodsInfo = prioritizeMethodsSection(records);
+  records = methodsInfo.records;
+  const methodsFound = methodsInfo.methodsFound;
 
+  console.log("[TEXT] after methods prioritize:", records.length);
   records = mergeHeadingRecords(records);
   console.log("[TEXT] after merge:", records.length);
 
@@ -283,6 +283,8 @@ export function getCandidateRecords() {
     index,
     element: record.element,
     text: record.text,
+    inMethods: !!record.inMethods,
+    methodsFound,
     score: scoreBlockForNER(record.text)
   }));
 
@@ -313,7 +315,10 @@ function prioritizeMethodsSection(records) {
 
   if (methodCandidates.length === 0) {
     console.log("[TEXT] No Methods section found");
-    return records;
+    return {
+      records: records.map(record => ({ ...record, inMethods: false })),
+      methodsFound: false
+    };
   }
 
   let chosenLevel = null;
@@ -337,9 +342,14 @@ function prioritizeMethodsSection(records) {
     }
   }
 
-  const methodsRecords = records.slice(methodsStart, methodsEnd);
-  const beforeMethods = records.slice(0, methodsStart);
-  const afterMethods = records.slice(methodsEnd);
+  const tagged = records.map((record, index) => ({
+    ...record,
+    inMethods: index >= methodsStart && index < methodsEnd
+  }));
+
+  const methodsRecords = tagged.slice(methodsStart, methodsEnd);
+  const beforeMethods = tagged.slice(0, methodsStart);
+  const afterMethods = tagged.slice(methodsEnd);
 
   console.log("[TEXT] Methods section prioritized:", {
     chosenLevel,
@@ -348,7 +358,10 @@ function prioritizeMethodsSection(records) {
     methodsCount: methodsRecords.length
   });
 
-  return [...methodsRecords, ...beforeMethods, ...afterMethods];
+  return {
+    records: [...methodsRecords, ...beforeMethods, ...afterMethods],
+    methodsFound: true
+  };
 }
 
 function removeHeadingOnlyRecords(records) {
@@ -448,12 +461,6 @@ function scoreNode(node) {
   return textLen + pCount * 200 - penalty;
 }
 
-function removeNoise(root) {
-  for (const sel of NOISE_SELECTORS) {
-    root.querySelectorAll(sel).forEach(el => el.remove());
-  }
-}
-
 function isInNoise(el) {
   return NOISE_SELECTORS.some(sel => el.closest(sel));
 }
@@ -478,10 +485,11 @@ function isLikelyHeading(text) {
 function scoreBlockForNER(block) {
     let score = 0;
 
-    if (/\b(university|institute|laboratory|lab|medical center|department of|school of|faculty of|review board|subjects)\b/i.test(block)) score += 3;
-    if (/\b(hospital|province)\b/i.test(block)) score += 5;
-    if (/\b(canada|usa|united states|uk|france|germany|china|japan|australia|sweden)\b/i.test(block)) score += 2;
+    if (/\b(university's|institute|laboratory|lab|department of|school of|faculty of|subjects|center)\b/i.test(block)) score += 3;
+    if (/\b(hospital|province|review board|participants)\b/i.test(block)) score += 5;
+    //if (/\b(canada|usa|united states|uk|france|germany|china|japan|australia|sweden)\b/i.test(block)) score += 2;
     if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}/.test(block)) score += 1;
+    if (/\b(north|northern|east|eastern|west|western|south|southern)\b/i.test(block)) score += 1;
     if (block.length < 40) score -= 2;
     if (/^\d+(\.|\))/.test(block)) score -= 1;
     if (/\b(references|acknowledgements|supplementary)\b/i.test(block)) score -= 5;
@@ -504,7 +512,8 @@ function mergeHeadingRecords(records) {
     if (isLikelyHeading(curr.text) && next) {
       merged.push({
         element: next.element,
-        text: `${curr.text} ${next.text}`
+        text: `${curr.text} ${next.text}`,
+        inMethods: !!next.inMethods
       });
       i += 2;
     } else {
