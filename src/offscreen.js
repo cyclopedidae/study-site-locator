@@ -171,6 +171,7 @@ function mergeEntities(tokens, context = {}) {
     const prefix = label.slice(0, 2);
     const type = label.slice(2);
     const word = cleanToken(rawWord);
+    const isSubword = rawWord.startsWith('##');
 
     if (!type || label === 'O') {
       if (current) {
@@ -180,9 +181,7 @@ function mergeEntities(tokens, context = {}) {
       continue;
     }
 
-    if (prefix === 'B-') {
-      if (current) merged.push(current);
-
+    if (!current) {
       current = {
         entity: label,
         type,
@@ -192,17 +191,25 @@ function mergeEntities(tokens, context = {}) {
       continue;
     }
 
-    if (prefix === 'I-' && current && current.type === type) {
-      current.text += rawWord.startsWith('##')
-        ? cleanToken(rawWord)
-        : ' ' + word;
-
+    if (isSubword && current.type === type) {
+      current.text += word;
       current.score = Math.min(current.score, score);
       continue;
     }
 
-    if (current) merged.push(current);
-    current = null;
+    if ((prefix === 'I-' || prefix === 'B-') && current.type === type) {
+      current.text += ' ' + word;
+      current.score = Math.min(current.score, score);
+      continue;
+    }
+
+    merged.push(current);
+    current = {
+      entity: label,
+      type,
+      text: word,
+      score
+    };
   }
 
   if (current) merged.push(current);
