@@ -31,14 +31,15 @@ const SELECTORS = [
   'conflict-of-interest',
   'ArticleContent',
   'article-container',
-  '.articleBody'
+  '.articleBody',
+  '#body' // ScienceDirect
 ];
 
 const METHOD_HEADERS = [
   'methods',
   'method',
   '2 methods', // Wiley
-  '2. method', // ScienceDirect
+  '2. method',
   'materials and methods',
   'patients and methods',
   'methodology',
@@ -250,7 +251,7 @@ export function getCandidateRecords() {
   const best = getBestArticleRoot();
   console.log("[TEXT] root:", best);
 
-  let records = [...best.querySelectorAll('h2, h3, h4, p, figcaption, div[role="paragraph"], [id^="para"]')]
+  let records = [...best.querySelectorAll('h2, h3, h4, p, figcaption, div[role="paragraph"], [id^="para"], [id^="p00"]')]
     .filter(el => !isInNoise(el))
     .map(el => ({
       tag: el.tagName,
@@ -260,7 +261,7 @@ export function getCandidateRecords() {
     .filter(record => record.text);
 
   console.log("[TEXT] raw records count:", records.length);
-  console.log("[TEXT] raw records sample:", records.slice(0, 10).map(r => ({
+  console.log("[TEXT] all raw records:", records.map(r => ({
     tag: r.tag,
     text: r.text
   })));
@@ -485,7 +486,7 @@ function isLikelyHeading(text) {
 function scoreBlockForNER(block) {
     let score = 0;
 
-    if (/\b(university's|institute|laboratory|lab|department of|school of|faculty of|subjects|center)\b/i.test(block)) score += 3;
+    if (/\b(university|institute|laboratory|lab|department of|school of|faculty of|subjects|center)\b/i.test(block)) score += 3;
     if (/\b(hospital|province|review board|participants)\b/i.test(block)) score += 5;
     //if (/\b(canada|usa|united states|uk|france|germany|china|japan|australia|sweden)\b/i.test(block)) score += 2;
     if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}/.test(block)) score += 1;
