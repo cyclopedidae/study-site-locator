@@ -41,13 +41,15 @@ const METHOD_HEADERS = [
   '2 methods', // Wiley
   '2. method',
   'materials and methods',
+  '2 materials and methods',
   'patients and methods',
   'methodology',
   'experimental procedures',
   'study design',
   'research design',
   'subjects and methods',
-  'materials methods'
+  'materials methods',
+  'the study'
 ];
 
 const TERMINAL_HEADERS = [

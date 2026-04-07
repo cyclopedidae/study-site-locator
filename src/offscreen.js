@@ -197,13 +197,14 @@ function mergeEntities(tokens, context = {}) {
       continue;
     }
 
-    if ((prefix === 'I-' || prefix === 'B-') && current.type === type) {
+    if (prefix === 'I-' && current.type === type) {
       current.text += ' ' + word;
       current.score = Math.min(current.score, score);
       continue;
     }
 
-    merged.push(current);
+    if (current) merged.push(current);
+
     current = {
       entity: label,
       type,

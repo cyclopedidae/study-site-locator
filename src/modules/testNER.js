@@ -24,6 +24,6 @@ async function testNER(str) {
   console.log(result);
 }
 
-testNER("This study was conducted among a rural Northern Plains American Indian reservation population that had participated in a previous study known as the American Indian Vietnam Veterans Project (8) . When the present study was initiated, veterans from the previous study represented the best sample available of American Indians with a known prevalence of lifetime psychiatric disorders, including PTSD (8) . The substantial prevalence of well-characterized cases of mental illness was critical to testing the reliability of the SCID in this manner. Bias due to respondents’ prior familiarity with the SCID was minimized by the 8 years or more that had elapsed since the conclusion of the American Indian Vietnam Veterans Project.");
+testNER("The study was conducted across 2 Selwyn Foundation dementia day care centers in Auckland, New Zealand.");
 
 //node C:\Users\User\Documents\00_INBOX\mhf_ssl_location_finder\mhf_ssl_location_finder\src\modules\testNER.js
