@@ -19,6 +19,7 @@ const NOISE_SELECTORS = [
 ];
 
 const SELECTORS = [
+  '.article.fulltext-view ', // BMJ
   '#bodymatter', // Sage,
   '#Article content',
   '.article-body',
@@ -32,16 +33,24 @@ const SELECTORS = [
   'ArticleContent',
   'article-container',
   '.articleBody',
-  '#body' // ScienceDirect
+  '#body', // ScienceDirect
+  '#main-content',
+  'inside'
 ];
+
+const DOM_PARAGRAPHS = '\
+h2, h3, h4, p, figcaption, div[role="paragraph"], [id^="para"], \
+[id^="p0"], [id^="par00"], .html-p, [id^="p-"]'
 
 const METHOD_HEADERS = [
   'methods',
   'method',
   '2 methods', // Wiley
   '2. method',
+  '2. methods', // Maturitas
   'materials and methods',
   '2 materials and methods',
+  '2. materials and methods',
   'patients and methods',
   'methodology',
   'experimental procedures',
@@ -49,7 +58,8 @@ const METHOD_HEADERS = [
   'research design',
   'subjects and methods',
   'materials methods',
-  'the study'
+  'the study',
+  'data and methods'
 ];
 
 const TERMINAL_HEADERS = [
@@ -253,7 +263,7 @@ export function getCandidateRecords() {
   const best = getBestArticleRoot();
   console.log("[TEXT] root:", best);
 
-  let records = [...best.querySelectorAll('h2, h3, h4, p, figcaption, div[role="paragraph"], [id^="para"], [id^="p00"]')]
+  let records = [...best.querySelectorAll(DOM_PARAGRAPHS)]
     .filter(el => !isInNoise(el))
     .map(el => ({
       tag: el.tagName,
@@ -492,7 +502,7 @@ function scoreBlockForNER(block) {
     if (/\b(hospital|province|review board|participants)\b/i.test(block)) score += 5;
     //if (/\b(canada|usa|united states|uk|france|germany|china|japan|australia|sweden)\b/i.test(block)) score += 2;
     if (/[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4}/.test(block)) score += 1;
-    if (/\b(north|northern|east|eastern|west|western|south|southern)\b/i.test(block)) score += 1;
+    if (/\b(north|northern|east|eastern|west|western|south|southern|southwesthern|northwestern|southeastern|northeastern)\b/i.test(block)) score += 1;
     if (block.length < 40) score -= 2;
     if (/^\d+(\.|\))/.test(block)) score -= 1;
     if (/\b(references|acknowledgements|supplementary)\b/i.test(block)) score -= 5;

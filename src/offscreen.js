@@ -10,8 +10,14 @@ const ALLOWED_MISC_WORDS = new Set([
   'Review Board', 
   'University', 
   "'University's",
-  'Indian',
-  'American'
+  'American',
+  'Spanish',
+  'Belgian',
+  'Canadian',
+  'African',
+  'Korean', 
+  'Chinese',
+  'Australian'
 ]);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -128,7 +134,7 @@ function isUsefulEntity(ent) {
     'for', 'and', 'of', 'the', 'in', 'on', 'at', 'by', 'to', 'from',
     'with', 'without', 'study', 'data', 'outcome',
     'primary', 'secondary', 'depressive', 'adherence', 'mood', 'weeks',
-    'baseline', 'post', 'intervention', 'status', 'support'
+    'baseline', 'post', 'intervention', 'status', 'support', 'icu'
   ]);
 
   const text = (ent.text || '').trim();
@@ -148,7 +154,7 @@ function dedupe(arr) {
 }
 
 function isRelevantOrganization(text) {
-  return /\b(university|universities|hospital|hospitals|review board|institutional review board|irb|ethics committee|ethics board|institute|institutes|department|faculty|school|schools|college|colleges|center|centre|clinic|clinics|medical center|medical centre)\b/i.test(text);
+  return /\b(university|universities|hospital|hospitals|review board|institutional review board|ethics committee|ethics board|institute|institutes|department|faculty|school|schools|college|colleges|center|centre|clinic|clinics|medical center|medical centre)\b/i.test(text);
 }
 
 function mergeEntities(tokens, context = {}) {

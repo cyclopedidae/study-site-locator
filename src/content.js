@@ -13,6 +13,9 @@ let currentCandidates = [];
 let totalHighlights = 0;
 let isExtractionRunning = false;
 
+let elapsedTime = 0;
+let startTime = 0;
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "extract_text") {
     const candidates = getCandidateRecords();
@@ -27,6 +30,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     isExtractionRunning = true;
     clearHighlights();
 
+    startTime = Date.now();
     console.log("[CONTENT] Candidate texts sent to NER:", payload);
 
     // Respond immediately so the popup remains responsive.
@@ -82,6 +86,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (wasFirstSuccessfulBatch) {
       setActiveHighlightToFirstInElement(candidate.element);
+      elapsedTime = Date.now() - startTime;
+      console.log("[CONTENT] ELAPSED TIME", elapsedTime, "ms")
     }    
     
     sendResponse({
