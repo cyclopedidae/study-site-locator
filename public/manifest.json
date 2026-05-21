@@ -1,6 +1,6 @@
 {
-  "name": "SSL Country of Origin Finder",
-  "description": "tbd",
+  "name": "Study Site Locator",
+  "description": "An NER-based software for study site identification.",
   "version": "1.0",
   "manifest_version": 3,
     "icons": {
@@ -9,7 +9,6 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
