@@ -23,7 +23,10 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["activeTab", "scripting", "offscreen", "storage"],
+  "permissions": [
+    "activeTab",
+    "offscreen"
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
